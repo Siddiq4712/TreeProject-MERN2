@@ -47,9 +47,9 @@ const Register = () => {
       return;
     }
 
-    if (form.password.length < 6) {
-      setError('Password must be at least 6 characters.');
-      showToast('Password must be at least 6 characters.', 'error');
+    if (form.password.length < 8) {
+      setError('Password must be at least 8 characters.');
+      showToast('Password must be at least 8 characters.', 'error');
       return;
     }
 
@@ -180,7 +180,7 @@ const Register = () => {
             <div className="auth-form-grid-two" style={{ marginBottom: '20px' }}>
               <div>
                 <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#1b4332' }}>Password</label>
-                <input type="password" value={form.password} onChange={(e) => updateField('password', e.target.value)} placeholder="At least 6 characters" style={inputStyle} required />
+                <input type="password" value={form.password} onChange={(e) => updateField('password', e.target.value)} placeholder="At least 8 characters" style={inputStyle} required />
               </div>
               <div>
                 <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#1b4332' }}>Confirm password</label>

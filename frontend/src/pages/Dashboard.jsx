@@ -27,34 +27,6 @@ const quickActions = [
   },
 ];
 
-const roleGuides = {
-  Volunteer: [
-    "Browse open events and join the one you want to support.",
-    "Pick labor tasks like digging, planting, watering, or maintenance.",
-    "Update trees after field work so progress stays accurate.",
-  ],
-  Sponsor: [
-    "Open an event and choose whether to fund or procure resources.",
-    "Sponsor event needs or specific trees and track your impact.",
-    "Use Tree Tracker to see sponsored trees, planters, and health updates.",
-  ],
-  Organizer: [
-    "Create an event, assign land, and define volunteer and funding goals.",
-    "Approve join requests and watch readiness across labor and resources.",
-    "Track tree progress and keep maintenance plans moving.",
-  ],
-  Landowner: [
-    "Add land with location, area, soil, and water availability.",
-    "Link suitable land to plantation events or offer it for future use.",
-    "Monitor how many events and trees are associated with your land.",
-  ],
-  Admin: [
-    "Use the admin dashboard to monitor users, events, trees, and donations.",
-    "Review role distribution, activity totals, and impact reporting.",
-    "Keep the platform healthy by tracking progress across all modules.",
-  ],
-};
-
 const Dashboard = () => {
   const [events, setEvents] = useState([]);
   const [search, setSearch] = useState("");

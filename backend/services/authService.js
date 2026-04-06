@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import db from '../models/index.js';
+import { getAdminSeedConfig } from '../config/env.js';
 
 const formatUserPayload = (user) => ({
   id: user._id,
@@ -16,12 +17,6 @@ const formatUserPayload = (user) => ({
   karma_points: user.karma_points,
 });
 
-const getAdminSeedConfig = () => ({
-  name: process.env.ADMIN_NAME || 'TreeNadu Admin',
-  email: process.env.ADMIN_EMAIL || 'admin@treenadu.local',
-  password: process.env.ADMIN_PASSWORD || 'admin12345',
-});
-
 export const registerUser = async (payload) => {
   const {
     name,
@@ -35,8 +30,11 @@ export const registerUser = async (payload) => {
     bio,
   } = payload;
 
+  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedPassword = String(password);
+
   // Check if user exists
-  const existingUser = await db.User.findOne({ email });
+  const existingUser = await db.User.findOne({ email: normalizedEmail });
   if (existingUser) {
     throw { status: 409, message: 'Email already in use' };
   }
@@ -49,13 +47,17 @@ export const registerUser = async (payload) => {
     throw { status: 400, message: 'Organization name is required for organization accounts' };
   }
 
+  if (normalizedPassword.length < 8) {
+    throw { status: 400, message: 'Password must be at least 8 characters long' };
+  }
+
   // Hash password
-  const hashedPassword = await bcrypt.hash(password, 10);
+  const hashedPassword = await bcrypt.hash(normalizedPassword, 10);
 
   // Create user
   const newUser = await db.User.create({
     name,
-    email,
+    email: normalizedEmail,
     password: hashedPassword,
     role: role || 'Volunteer',
     account_type: account_type || 'Individual',
@@ -80,10 +82,16 @@ export const registerUser = async (payload) => {
 };
 
 export const loginUser = async (email, password) => {
+  const normalizedEmail = email.trim().toLowerCase();
+
   // Find user
-  const user = await db.User.findOne({ email });
+  const user = await db.User.findOne({ email: normalizedEmail });
   if (!user) {
     throw { status: 401, message: 'Invalid email or password' };
+  }
+
+  if (user.is_active === false) {
+    throw { status: 403, message: 'This account has been disabled' };
   }
 
   // Check password
@@ -187,6 +195,10 @@ export const getUserProfile = async (userId) => {
 
 export const ensureAdminAccount = async () => {
   const config = getAdminSeedConfig();
+  if (!config) {
+    return null;
+  }
+
   const existing = await db.User.findOne({ email: config.email });
 
   if (existing) {
@@ -204,6 +216,6 @@ export const ensureAdminAccount = async () => {
     is_active: true,
   });
 
-  console.log(`🌿 Admin login ready: ${config.email}`);
+  console.log(`Admin seed account ready: ${config.email}`);
   return admin;
 };
