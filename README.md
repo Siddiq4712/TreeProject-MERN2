@@ -101,24 +101,6 @@ npm install
 npm run dev
 ```
 
-Default URLs:
-
-- Frontend: `http://localhost:5173`
-- Backend API: `http://localhost:8000/api`
-
-## Environment Setup
-
-Add the following to `backend/.env`:
-
-```env
-MONGODB_URI=your_mongodb_connection_string
-JWT_SECRET=your_secret
-PORT=8000
-ADMIN_NAME=TreeNadu Admin
-ADMIN_EMAIL=admin@treenadu.local
-ADMIN_PASSWORD=admin12345
-```
-
 ## First-Time Usage Flow
 
 ### For Organizers
