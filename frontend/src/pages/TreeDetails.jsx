@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 
@@ -12,11 +12,7 @@ const TreeDetails = () => {
   // Helper to get ID (handles both MongoDB _id and SQL id)
   const getId = (item) => item?._id || item?.id;
 
-  useEffect(() => {
-    fetchTree();
-  }, [id]);
-
-  const fetchTree = async () => {
+  const fetchTree = useCallback(async () => {
     try {
       const res = await api.get(`/trees/${id}`);
       setTree(res.data);
@@ -25,7 +21,11 @@ const TreeDetails = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
+
+  useEffect(() => {
+    fetchTree();
+  }, [fetchTree]);
 
   const handleTask = async (taskType) => {
     setTaskLoading(true);
@@ -92,7 +92,6 @@ const TreeDetails = () => {
     },
     infoGrid: {
       display: 'grid',
-      gridTemplateColumns: '1fr 1fr',
       gap: '20px',
       marginTop: '25px',
     },
@@ -132,6 +131,13 @@ const TreeDetails = () => {
       background: '#f8f9fa',
       borderRadius: '8px',
       marginBottom: '10px',
+    },
+    timelineCard: {
+      padding: '14px',
+      background: '#f0fdf4',
+      border: '1px solid #d8f3dc',
+      borderRadius: '12px',
+      marginBottom: '12px',
     },
   };
 
@@ -188,7 +194,7 @@ const TreeDetails = () => {
               {tree.species}
             </h1>
 
-            <div style={styles.infoGrid}>
+            <div className="tree-info-grid" style={styles.infoGrid}>
               <div style={styles.infoCard}>
                 <p style={{ color: '#888', fontSize: '12px', margin: 0 }}>
                   Growth Status
@@ -308,6 +314,26 @@ const TreeDetails = () => {
                     <span style={{ color: '#888', fontSize: '12px' }}>
                       {new Date(task.completed_at).toLocaleDateString()}
                     </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {tree.tracking && tree.tracking.length > 0 && (
+              <div style={styles.taskHistory}>
+                <h3 style={{ color: '#1b4332' }}>Plant Tracking Timeline</h3>
+                {tree.tracking.map((entry, index) => (
+                  <div key={getId(entry) || index} style={styles.timelineCard}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+                      <strong style={{ color: '#1b4332' }}>{entry.title}</strong>
+                      <span style={{ color: '#52796f', fontSize: '12px' }}>
+                        {new Date(entry.tracked_at || entry.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                    {entry.notes && <p style={{ margin: '8px 0 0', color: '#52796f', fontSize: '14px' }}>{entry.notes}</p>}
+                    <p style={{ margin: '8px 0 0', color: '#2d6a4f', fontSize: '12px', fontWeight: 'bold' }}>
+                      {entry.actor?.organization_name || entry.actor?.name || 'System update'}
+                    </p>
                   </div>
                 ))}
               </div>

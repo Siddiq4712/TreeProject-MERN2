@@ -1,13 +1,11 @@
-import { useState, useEffect, useContext } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import api from '../services/api';
-import { AuthContext } from '../context/AuthContext';
 
 const LandDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user } = useContext(AuthContext);
   const [land, setLand] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
@@ -15,11 +13,7 @@ const LandDetail = () => {
   // Helper to get ID (handles both MongoDB _id and SQL id)
   const getId = (item) => item?._id || item?.id;
 
-  useEffect(() => {
-    fetchLandDetail();
-  }, [id]);
-
-  const fetchLandDetail = async () => {
+  const fetchLandDetail = useCallback(async () => {
     try {
       const res = await api.get(`/lands/${id}/detail`);
       setLand(res.data);
@@ -30,7 +24,11 @@ const LandDetail = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id, navigate]);
+
+  useEffect(() => {
+    fetchLandDetail();
+  }, [fetchLandDetail]);
 
   const handleDelete = async () => {
     if (!confirm('Delete this land? This action cannot be undone.')) return;
@@ -90,14 +88,11 @@ const LandDetail = () => {
 
   const styles = {
     body: {
-      display: 'flex',
       backgroundColor: '#f4f7f6',
       minHeight: '100vh',
       fontFamily: "'Segoe UI', sans-serif",
     },
     mainContent: {
-      marginLeft: '260px',
-      width: 'calc(100% - 260px)',
       padding: '30px',
     },
     backBtn: {
@@ -145,7 +140,6 @@ const LandDetail = () => {
       fontSize: '13px',
     },
     tabs: {
-      display: 'flex',
       gap: '8px',
       marginBottom: '25px',
       background: 'white',
@@ -175,7 +169,6 @@ const LandDetail = () => {
     },
     grid: {
       display: 'grid',
-      gridTemplateColumns: '2fr 1fr',
       gap: '25px',
     },
     card: {
@@ -212,7 +205,7 @@ const LandDetail = () => {
     },
     statGrid: {
       display: 'grid',
-      gridTemplateColumns: 'repeat(2, 1fr)',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
       gap: '15px',
       marginBottom: '20px',
     },
@@ -300,7 +293,7 @@ const LandDetail = () => {
     },
     photoGrid: {
       display: 'grid',
-      gridTemplateColumns: 'repeat(3, 1fr)',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
       gap: '12px',
     },
     photoCard: {
@@ -312,7 +305,6 @@ const LandDetail = () => {
       cursor: 'pointer',
     },
     actionBtns: {
-      display: 'flex',
       gap: '12px',
       marginTop: '20px',
     },
@@ -355,9 +347,9 @@ const LandDetail = () => {
 
   if (loading) {
     return (
-      <div style={styles.body}>
+      <div className="app-shell" style={styles.body}>
         <Sidebar />
-        <div style={styles.mainContent}>
+        <div className="app-main" style={styles.mainContent}>
           <p style={{ textAlign: 'center', padding: '50px' }}>
             <i className="fas fa-spinner fa-spin"></i> Loading land details...
           </p>
@@ -371,10 +363,10 @@ const LandDetail = () => {
   const statusColors = getStatusColor(land.status);
 
   return (
-    <div style={styles.body}>
+    <div className="app-shell" style={styles.body}>
       <Sidebar />
 
-      <div style={styles.mainContent}>
+      <div className="app-main" style={styles.mainContent}>
         {/* Back Button */}
         <button style={styles.backBtn} onClick={() => navigate('/my-land')}>
           <i className="fas fa-arrow-left"></i> Back to My Land
@@ -404,7 +396,7 @@ const LandDetail = () => {
         </div>
 
         {/* Tabs */}
-        <div style={styles.tabs}>
+        <div className="detail-tabs" style={styles.tabs}>
           {[
             { key: 'overview', label: 'Overview', icon: 'fa-info-circle' },
             { key: 'trees', label: 'Trees', icon: 'fa-tree' },
@@ -426,7 +418,7 @@ const LandDetail = () => {
           ))}
         </div>
 
-        <div style={styles.grid}>
+        <div className="detail-grid" style={styles.grid}>
           {/* Left Column */}
           <div>
             {/* Overview Tab */}

@@ -1,8 +1,7 @@
-import { useState, useEffect, useContext } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import api from '../services/api';
-import { AuthContext } from '../context/AuthContext';
 
 const MyEvents = () => {
   const [events, setEvents] = useState([]);
@@ -11,7 +10,6 @@ const MyEvents = () => {
   const [showRequests, setShowRequests] = useState(false);
   const [loading, setLoading] = useState(true);
   const [requestFilter, setRequestFilter] = useState('PENDING');
-  const { user } = useContext(AuthContext);
   const navigate = useNavigate();
 
   // Helper to get ID (handles both MongoDB _id and SQL id)
@@ -104,18 +102,14 @@ const MyEvents = () => {
 
   const styles = {
     body: {
-      display: 'flex',
       backgroundColor: '#f4f7f6',
       minHeight: '100vh',
       fontFamily: "'Segoe UI', sans-serif",
     },
     mainContent: {
-      marginLeft: '260px',
-      width: 'calc(100% - 260px)',
       padding: '30px',
     },
     header: {
-      display: 'flex',
       justifyContent: 'space-between',
       alignItems: 'center',
       marginBottom: '30px',
@@ -139,7 +133,6 @@ const MyEvents = () => {
     },
     eventGrid: {
       display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))',
       gap: '25px',
     },
     eventCard: {
@@ -158,7 +151,6 @@ const MyEvents = () => {
       padding: '20px',
     },
     statsRow: {
-      display: 'flex',
       gap: '15px',
       marginBottom: '15px',
     },
@@ -178,7 +170,6 @@ const MyEvents = () => {
       cursor: 'pointer',
     },
     actionBtns: {
-      display: 'flex',
       gap: '10px',
       marginTop: '15px',
     },
@@ -228,7 +219,6 @@ const MyEvents = () => {
       padding: '20px',
     },
     filterTabs: {
-      display: 'flex',
       gap: '10px',
       marginBottom: '20px',
     },
@@ -247,18 +237,17 @@ const MyEvents = () => {
       marginBottom: '15px',
     },
     requestActions: {
-      display: 'flex',
       gap: '10px',
       marginTop: '12px',
     },
   };
 
   return (
-    <div style={styles.body}>
+    <div className="app-shell" style={styles.body}>
       <Sidebar />
 
-      <div style={styles.mainContent}>
-        <div style={styles.header}>
+      <div className="app-main" style={styles.mainContent}>
+        <div className="my-events-header" style={styles.header}>
           <div>
             <h1 style={styles.title}>📋 My Created Events</h1>
             <p style={{ color: '#666', margin: '5px 0 0' }}>Manage events you've created</p>
@@ -281,7 +270,7 @@ const MyEvents = () => {
             </button>
           </div>
         ) : (
-          <div style={styles.eventGrid}>
+          <div className="my-events-grid" style={styles.eventGrid}>
             {events.map((ev) => {
               const eventId = getId(ev);
               return (
@@ -316,7 +305,7 @@ const MyEvents = () => {
 
                   <div style={styles.cardBody}>
                     {/* Stats */}
-                    <div style={styles.statsRow}>
+                    <div className="my-events-stats-row" style={styles.statsRow}>
                       <div style={styles.statBox}>
                         <p style={{ margin: 0, fontSize: '11px', color: '#888' }}>Phase</p>
                         <p style={{ margin: '3px 0 0', fontWeight: 'bold', color: '#2d6a4f', fontSize: '13px' }}>
@@ -364,7 +353,7 @@ const MyEvents = () => {
                     </span>
 
                     {/* Action Buttons */}
-                    <div style={styles.actionBtns}>
+                    <div className="detail-action-row" style={styles.actionBtns}>
                       <button
                         style={{ ...styles.actionBtn, background: '#2d6a4f', color: 'white' }}
                         onClick={(e) => {
@@ -421,7 +410,7 @@ const MyEvents = () => {
 
             <div style={styles.modalBody}>
               {/* Filter Tabs */}
-              <div style={styles.filterTabs}>
+              <div className="stack-on-mobile" style={styles.filterTabs}>
                 {['PENDING', 'ACCEPTED', 'REJECTED'].map((status) => (
                   <button
                     key={status}
@@ -504,7 +493,7 @@ const MyEvents = () => {
 
                       {/* Actions (only for pending) */}
                       {req.request_status === 'PENDING' && (
-                        <div style={styles.requestActions}>
+                        <div className="request-actions-row" style={styles.requestActions}>
                           <button
                             style={{ flex: 1, padding: '10px', background: '#2d6a4f', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
                             onClick={() => handleAccept(reqId)}

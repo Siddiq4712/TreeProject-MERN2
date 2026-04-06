@@ -20,8 +20,33 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ['Volunteer', 'Sponsor', 'Admin'],
+      enum: ['Volunteer', 'Sponsor', 'Organizer', 'Landowner', 'Admin'],
       default: 'Volunteer',
+    },
+    account_type: {
+      type: String,
+      enum: ['Individual', 'Organization'],
+      default: 'Individual',
+    },
+    organization_name: {
+      type: String,
+      maxlength: 150,
+    },
+    phone: {
+      type: String,
+      maxlength: 30,
+    },
+    sponsor_logo_url: {
+      type: String,
+      maxlength: 500,
+    },
+    bio: {
+      type: String,
+      maxlength: 500,
+    },
+    is_active: {
+      type: Boolean,
+      default: true,
     },
     karma_points: {
       type: Number,

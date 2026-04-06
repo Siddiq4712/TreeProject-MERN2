@@ -1,39 +1,90 @@
-import { useState, useEffect, useContext } from 'react';
-import Sidebar from './Sidebar';
-import JoinEventModal from './JoinEventModal';
-import api from '../services/api';
-import { AuthContext } from '../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useContext, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
+import Sidebar from "./Sidebar";
+import JoinEventModal from "./JoinEventModal";
+import api from "../services/api";
+import { AuthContext } from "../context/auth-context";
+import { useResponsive } from "../hooks/useResponsive";
+
+const quickActions = [
+  {
+    title: "Create Event",
+    copy: "Launch a new plantation campaign.",
+    icon: "fa-plus-circle",
+    path: "/create-event",
+  },
+  {
+    title: "Track Trees",
+    copy: "See growth, tasks, and plant history.",
+    icon: "fa-tree",
+    path: "/my-trees",
+  },
+  {
+    title: "Manage Land",
+    copy: "Map available spaces and host events.",
+    icon: "fa-mountain",
+    path: "/my-land",
+  },
+];
+
+const roleGuides = {
+  Volunteer: [
+    "Browse open events and join the one you want to support.",
+    "Pick labor tasks like digging, planting, watering, or maintenance.",
+    "Update trees after field work so progress stays accurate.",
+  ],
+  Sponsor: [
+    "Open an event and choose whether to fund or procure resources.",
+    "Sponsor event needs or specific trees and track your impact.",
+    "Use Tree Tracker to see sponsored trees, planters, and health updates.",
+  ],
+  Organizer: [
+    "Create an event, assign land, and define volunteer and funding goals.",
+    "Approve join requests and watch readiness across labor and resources.",
+    "Track tree progress and keep maintenance plans moving.",
+  ],
+  Landowner: [
+    "Add land with location, area, soil, and water availability.",
+    "Link suitable land to plantation events or offer it for future use.",
+    "Monitor how many events and trees are associated with your land.",
+  ],
+  Admin: [
+    "Use the admin dashboard to monitor users, events, trees, and donations.",
+    "Review role distribution, activity totals, and impact reporting.",
+    "Keep the platform healthy by tracking progress across all modules.",
+  ],
+};
 
 const Dashboard = () => {
   const [events, setEvents] = useState([]);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
+  const { isMobile, isTablet } = useResponsive();
 
-  // Helper to get ID (handles both MongoDB _id and SQL id)
   const getId = (item) => item?._id || item?.id;
+
+  const fetchEvents = useCallback(async () => {
+    try {
+      const res = await api.get("/events");
+      setEvents(res.data);
+    } catch (err) {
+      console.error("Dashboard fetchEvents failed:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!user) return;
     fetchEvents();
-  }, [user]);
+  }, [user, fetchEvents]);
 
-  const fetchEvents = async () => {
-    try {
-      const res = await api.get('/events');
-      setEvents(res.data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleJoinClick = (event) => {
+  const handleJoinClick = (event, e) => {
+    e.stopPropagation();
     setSelectedEvent(event);
     setShowJoinModal(true);
   };
@@ -44,211 +95,31 @@ const Dashboard = () => {
     fetchEvents();
   };
 
-  const filteredEvents = events.filter(
-    (ev) =>
-      ev.location.toLowerCase().includes(search.toLowerCase()) ||
-      ev.event_id.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredEvents = events.filter((ev) => {
+    const text =
+      `${ev.location} ${ev.event_id} ${ev.tree_species || ""}`.toLowerCase();
+    return text.includes(search.toLowerCase());
+  });
 
   const formatDate = (str) => {
-    if (!str) return 'Date TBD';
-    return new Date(str).toLocaleDateString('en-IN', {
-      day: 'numeric',
-      month: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
+    if (!str) return "Date TBD";
+    return new Date(str).toLocaleString("en-IN", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     });
   };
 
   const getInitials = (name) => {
-    if (!name) return '?';
-    return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
-  };
-
-  const PHASES = [
-    { key: 'WAITING_RESOURCES', label: 'Waiting', icon: 'fa-clock' },
-    { key: 'DIGGING', label: 'Digging', icon: 'fa-shovel' },
-    { key: 'PLANTING', label: 'Planting', icon: 'fa-seedling' },
-    { key: 'WATERING', label: 'Watering', icon: 'fa-tint' },
-    { key: 'FERTILIZING', label: 'Fertilizer', icon: 'fa-flask' },
-    { key: 'GUARDING', label: 'Guards', icon: 'fa-shield-alt' },
-    { key: 'MAINTENANCE', label: 'Maintain', icon: 'fa-tools' },
-    { key: 'COMPLETED', label: 'Done', icon: 'fa-check-circle' },
-  ];
-
-  const styles = {
-    body: {
-      display: 'flex',
-      backgroundColor: '#f4f7f6',
-      color: '#1b4332',
-      fontFamily: "'Segoe UI', sans-serif",
-      minHeight: '100vh',
-    },
-    mainContent: {
-      marginLeft: '260px',
-      width: 'calc(100% - 260px)',
-      padding: '30px',
-    },
-    topBar: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: '30px',
-    },
-    searchContainer: {
-      position: 'relative',
-      width: '50%',
-    },
-    searchInput: {
-      width: '100%',
-      padding: '12px 40px',
-      borderRadius: '25px',
-      border: '1px solid #ddd',
-      outline: 'none',
-      fontSize: '16px',
-    },
-    searchIcon: {
-      position: 'absolute',
-      left: '15px',
-      top: '14px',
-      color: '#888',
-    },
-    btnCreate: {
-      background: '#2d6a4f',
-      color: 'white',
-      padding: '12px 24px',
-      border: 'none',
-      borderRadius: '25px',
-      cursor: 'pointer',
-      fontWeight: 'bold',
-      display: 'flex',
-      alignItems: 'center',
-      gap: '8px',
-      fontSize: '16px',
-    },
-    statsGrid: {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-      gap: '20px',
-      marginBottom: '30px',
-    },
-    statCard: {
-      background: 'white',
-      padding: '20px',
-      borderRadius: '12px',
-      boxShadow: '0 4px 6px rgba(0,0,0,0.05)',
-      borderLeft: '5px solid #2d6a4f',
-    },
-    eventGrid: {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))',
-      gap: '25px',
-    },
-    eventCard: {
-      background: 'white',
-      borderRadius: '20px',
-      overflow: 'hidden',
-      boxShadow: '0 10px 25px rgba(0,0,0,0.08)',
-      transition: '0.3s',
-      cursor: 'pointer',
-    },
-    cardHeader: {
-      padding: '20px',
-      background: 'linear-gradient(135deg, #d8f3dc, #b7e4c7)',
-      position: 'relative',
-    },
-    initiationBadge: {
-      position: 'absolute',
-      top: '15px',
-      right: '15px',
-      padding: '5px 12px',
-      borderRadius: '20px',
-      fontSize: '10px',
-      fontWeight: 'bold',
-      color: 'white',
-    },
-    eventBody: {
-      padding: '20px',
-    },
-    progressSection: {
-      marginTop: '15px',
-    },
-    progressBar: {
-      height: '10px',
-      background: '#e0e0e0',
-      borderRadius: '5px',
-      overflow: 'hidden',
-      marginBottom: '8px',
-    },
-    progressFill: {
-      height: '100%',
-      borderRadius: '5px',
-      transition: '0.3s',
-    },
-    resourceTags: {
-      display: 'flex',
-      gap: '6px',
-      flexWrap: 'wrap',
-      marginTop: '12px',
-    },
-    resourceTag: {
-      padding: '4px 10px',
-      borderRadius: '15px',
-      fontSize: '10px',
-      fontWeight: 'bold',
-    },
-    phaseTracker: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      margin: '15px 0',
-      padding: '12px',
-      background: '#f8f9fa',
-      borderRadius: '10px',
-      overflow: 'auto',
-    },
-    volunteerSection: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginTop: '15px',
-      paddingTop: '15px',
-      borderTop: '1px solid #eee',
-    },
-    avatarGroup: {
-      display: 'flex',
-      marginLeft: '-8px',
-    },
-    avatar: {
-      width: '28px',
-      height: '28px',
-      borderRadius: '50%',
-      background: '#2d6a4f',
-      color: 'white',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontSize: '10px',
-      fontWeight: 'bold',
-      border: '2px solid white',
-      marginLeft: '-8px',
-    },
-    joinBtn: {
-      padding: '10px 20px',
-      border: 'none',
-      background: '#1b4332',
-      color: 'white',
-      borderRadius: '10px',
-      cursor: 'pointer',
-      fontWeight: 'bold',
-      fontSize: '13px',
-    },
-    approvalBadge: {
-      padding: '4px 10px',
-      borderRadius: '10px',
-      fontSize: '10px',
-      fontWeight: 'bold',
-      marginLeft: '10px',
-    },
+    if (!name) return "?";
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
   };
 
   const getProgressPercent = (current, goal) => {
@@ -256,244 +127,700 @@ const Dashboard = () => {
     return Math.min(100, Math.round((current / goal) * 100));
   };
 
+  const phaseTone = {
+    WAITING_RESOURCES: "#f59e0b",
+    DIGGING: "#f97316",
+    PLANTING: "#22c55e",
+    WATERING: "#0ea5e9",
+    FERTILIZING: "#8b5cf6",
+    GUARDING: "#14b8a6",
+    MAINTENANCE: "#84cc16",
+    COMPLETED: "#166534",
+  };
+
   return (
-    <div style={styles.body}>
+    <div
+      style={{
+        display: isMobile ? "block" : "flex",
+        background: "linear-gradient(180deg, #f4fbf6 0%, #eef7f1 100%)",
+        minHeight: "100vh",
+        fontFamily: "'Segoe UI', sans-serif",
+      }}
+    >
       <Sidebar />
 
-      <div style={styles.mainContent}>
-        {/* Top Bar */}
-        <div style={styles.topBar}>
-          <div style={styles.searchContainer}>
-            <i className="fas fa-search" style={styles.searchIcon}></i>
+      <main
+        style={{
+          marginLeft: isMobile ? 0 : isTablet ? "240px" : "280px",
+          width: isMobile
+            ? "100%"
+            : `calc(100% - ${isTablet ? "240px" : "280px"})`,
+          padding: isMobile ? "18px" : "30px 34px 40px",
+        }}
+      >
+        <section
+          style={{
+            borderRadius: "30px",
+            overflow: "hidden",
+            background:
+              "radial-gradient(circle at top right, rgba(187,247,208,0.55), transparent 26%), linear-gradient(135deg, #081c15 0%, #1b4332 48%, #2d6a4f 100%)",
+            color: "white",
+            padding: isMobile ? "20px" : "34px",
+            boxShadow: "0 28px 70px rgba(12, 35, 24, 0.16)",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              flexDirection: isMobile ? "column" : "row",
+              justifyContent: "space-between",
+              gap: "24px",
+              alignItems: "flex-start",
+            }}
+          >
+            <div style={{ maxWidth: "700px" }}>
+              <div
+                style={{
+                  display: "inline-flex",
+                  gap: "8px",
+                  alignItems: "center",
+                  borderRadius: "999px",
+                  padding: "9px 14px",
+                  background: "rgba(255,255,255,0.12)",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  marginBottom: "18px",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                }}
+              >
+                <i className="fas fa-leaf"></i>
+                Plantation Command Center
+              </div>
+              <h1
+                style={{
+                  margin: 0,
+                  fontSize: isMobile ? "28px" : "44px",
+                  lineHeight: 1.05,
+                }}
+              >
+                Welcome back,{" "}
+                {user?.organization_name || user?.name || "Planter"}.
+              </h1>
+              <p
+                style={{
+                  margin: "12px 0 0",
+                  fontSize: isMobile ? "14px" : "17px",
+                  color: "rgba(255,255,255,0.78)",
+                  lineHeight: 1.6,
+                }}
+              >
+                Discover open events, watch resource readiness, and move your
+                planting missions from idea to rooted impact.
+              </p>
+            </div>
+
+            <div
+              style={{
+                minWidth: "250px",
+                background: "rgba(255,255,255,0.1)",
+                border: "1px solid rgba(255,255,255,0.12)",
+                borderRadius: "24px",
+                padding: isMobile ? "14px" : "18px",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: "12px",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.1em",
+                  color: "rgba(255,255,255,0.68)",
+                }}
+              >
+                Your profile
+              </div>
+              <div
+                style={{
+                  fontSize: isMobile ? "20px" : "26px",
+                  fontWeight: 800,
+                  marginTop: "10px",
+                }}
+              >
+                {user?.role || "Volunteer"}
+              </div>
+              <div style={{ marginTop: "4px", color: "#bbf7d0" }}>
+                {user?.account_type || "Individual"} account
+              </div>
+              <div
+                style={{
+                  marginTop: "18px",
+                  fontSize: "14px",
+                  color: "rgba(255,255,255,0.72)",
+                }}
+              >
+                Karma
+              </div>
+              <div
+                style={{
+                  fontSize: isMobile ? "22px" : "28px",
+                  fontWeight: 800,
+                }}
+              >
+                {user?.karma_points || 0}
+              </div>
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: isMobile ? "1fr" : "1.3fr 1fr",
+              gap: "18px",
+              marginTop: "26px",
+            }}
+          >
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: isMobile
+                  ? "1fr"
+                  : "repeat(3, minmax(0, 1fr))",
+                gap: "14px",
+              }}
+            >
+              <div
+                style={{
+                  background: "rgba(255,255,255,0.09)",
+                  borderRadius: "22px",
+                  padding: isMobile ? "14px" : "18px",
+                }}
+              >
+                <div
+                  style={{ color: "rgba(255,255,255,0.68)", fontSize: "13px" }}
+                >
+                  Open Events
+                </div>
+                <div
+                  style={{
+                    fontSize: isMobile ? "24px" : "34px",
+                    fontWeight: 800,
+                    marginTop: "4px",
+                  }}
+                >
+                  {events.length}
+                </div>
+              </div>
+              <div
+                style={{
+                  background: "rgba(255,255,255,0.09)",
+                  borderRadius: "22px",
+                  padding: isMobile ? "14px" : "18px",
+                }}
+              >
+                <div
+                  style={{ color: "rgba(255,255,255,0.68)", fontSize: "13px" }}
+                >
+                  Need Sponsors
+                </div>
+                <div
+                  style={{
+                    fontSize: isMobile ? "24px" : "34px",
+                    fontWeight: 800,
+                    marginTop: "4px",
+                  }}
+                >
+                  {
+                    events.filter((e) => e.initiation_type === "Volunteer-Led")
+                      .length
+                  }
+                </div>
+              </div>
+              <div
+                style={{
+                  background: "rgba(255,255,255,0.09)",
+                  borderRadius: "22px",
+                  padding: isMobile ? "14px" : "18px",
+                }}
+              >
+                <div
+                  style={{ color: "rgba(255,255,255,0.68)", fontSize: "13px" }}
+                >
+                  Need Volunteers
+                </div>
+                <div
+                  style={{
+                    fontSize: isMobile ? "24px" : "34px",
+                    fontWeight: 800,
+                    marginTop: "4px",
+                  }}
+                >
+                  {
+                    events.filter((e) => e.initiation_type === "Sponsor-Led")
+                      .length
+                  }
+                </div>
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: isMobile
+                  ? "1fr"
+                  : "repeat(3, minmax(0, 1fr))",
+                gap: "12px",
+              }}
+            >
+              {quickActions.map((action) => (
+                <button
+                  key={action.title}
+                  onClick={() => navigate(action.path)}
+                  style={{
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    background: "rgba(255,255,255,0.08)",
+                    color: "white",
+                    borderRadius: "22px",
+                    padding: isMobile ? "12px" : "16px",
+                    textAlign: "left",
+                    cursor: "pointer",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: isMobile ? "17px" : "20px",
+                      marginBottom: "10px",
+                    }}
+                  >
+                    <i className={`fas ${action.icon}`}></i>
+                  </div>
+                  <div style={{ fontWeight: 700, marginBottom: "6px" }}>
+                    {action.title}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: "12px",
+                      lineHeight: 1.5,
+                      color: "rgba(255,255,255,0.72)",
+                    }}
+                  >
+                    {action.copy}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section
+          style={{
+            display: "flex",
+            flexDirection: isMobile ? "column" : "row",
+            justifyContent: "space-between",
+            gap: "18px",
+            alignItems: isMobile ? "stretch" : "center",
+            margin: "28px 0 18px",
+          }}
+        >
+          <div>
+            <h2 style={{ margin: 0, fontSize: "28px", color: "#0f2f24" }}>
+              Featured Events
+            </h2>
+            <p style={{ margin: "6px 0 0", color: "#52796f" }}>
+              Join live campaigns and move planting work forward.
+            </p>
+          </div>
+          <div
+            style={{
+              position: "relative",
+              width: isMobile ? "100%" : "420px",
+              maxWidth: "100%",
+            }}
+          >
+            <i
+              className="fas fa-search"
+              style={{
+                position: "absolute",
+                left: "16px",
+                top: "16px",
+                color: "#84a98c",
+              }}
+            ></i>
             <input
               type="text"
-              placeholder="Search events..."
-              style={styles.searchInput}
+              placeholder="Search by place, ID, or species"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              style={{
+                width: "100%",
+                borderRadius: "18px",
+                border: "1px solid #d7ebe0",
+                background: "white",
+                padding: "14px 16px 14px 42px",
+                fontSize: "15px",
+                outline: "none",
+                boxShadow: "0 10px 30px rgba(35, 76, 53, 0.06)",
+              }}
             />
           </div>
+        </section>
 
-          <button style={styles.btnCreate} onClick={() => navigate('/create-event')}>
-            <i className="fas fa-plus"></i> Create Event
-          </button>
-        </div>
-
-        {/* Stats Grid */}
-        <div style={styles.statsGrid}>
-          <div style={styles.statCard}>
-            <h4 style={{ fontSize: '14px', color: '#666', margin: 0 }}>Available Events</h4>
-            <p style={{ fontSize: '24px', fontWeight: 'bold', color: '#2d6a4f', margin: '5px 0 0' }}>
-              {events.length}
-            </p>
-          </div>
-          <div style={styles.statCard}>
-            <h4 style={{ fontSize: '14px', color: '#666', margin: 0 }}>Your Karma</h4>
-            <p style={{ fontSize: '24px', fontWeight: 'bold', color: '#2d6a4f', margin: '5px 0 0' }}>
-              {user?.karma_points || 0} 🌿
-            </p>
-          </div>
-          <div style={styles.statCard}>
-            <h4 style={{ fontSize: '14px', color: '#666', margin: 0 }}>Need Volunteers</h4>
-            <p style={{ fontSize: '24px', fontWeight: 'bold', color: '#2d6a4f', margin: '5px 0 0' }}>
-              {events.filter((e) => e.initiation_type === 'Sponsor-Led').length}
-            </p>
-          </div>
-          <div style={styles.statCard}>
-            <h4 style={{ fontSize: '14px', color: '#666', margin: 0 }}>Need Sponsors</h4>
-            <p style={{ fontSize: '24px', fontWeight: 'bold', color: '#2d6a4f', margin: '5px 0 0' }}>
-              {events.filter((e) => e.initiation_type === 'Volunteer-Led').length}
-            </p>
-          </div>
-        </div>
-
-        {/* Event Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-          <h3 style={{ margin: 0 }}>Available Events to Join</h3>
-          <span>Showing {filteredEvents.length} events</span>
-        </div>
-
-        {/* Event Grid */}
         {loading ? (
-          <p style={{ textAlign: 'center', color: '#888' }}>
-            <i className="fas fa-spinner fa-spin"></i> Loading events...
-          </p>
+          <div
+            style={{
+              padding: "80px 20px",
+              textAlign: "center",
+              color: "#52796f",
+            }}
+          >
+            <i
+              className="fas fa-spinner fa-spin"
+              style={{ marginRight: "10px" }}
+            ></i>
+            Loading events...
+          </div>
         ) : filteredEvents.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '40px', color: '#888' }}>
-            <i className="fas fa-calendar-times" style={{ fontSize: '50px', marginBottom: '20px', display: 'block' }}></i>
-            <p>No events available to join. Create your own!</p>
+          <div
+            style={{
+              background: "white",
+              borderRadius: "28px",
+              padding: "56px 24px",
+              textAlign: "center",
+              color: "#52796f",
+              boxShadow: "0 20px 50px rgba(16, 52, 35, 0.06)",
+            }}
+          >
+            <i
+              className="fas fa-seedling"
+              style={{
+                fontSize: "52px",
+                color: "#84cc16",
+                marginBottom: "18px",
+              }}
+            ></i>
+            <h3 style={{ margin: 0, fontSize: "26px", color: "#1b4332" }}>
+              No matching events right now
+            </h3>
+            <p style={{ margin: "10px 0 0" }}>
+              Try a different search or start a new event from your workspace.
+            </p>
           </div>
         ) : (
-          <div style={styles.eventGrid}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
+              gap: "22px",
+            }}
+          >
             {filteredEvents.map((ev) => {
               const volunteers = ev.eventVolunteers || [];
-              const sponsors = volunteers.filter((v) => v.contribution_type === 'Capital');
-              const laborVolunteers = volunteers.filter((v) => v.contribution_type === 'Labor');
-              const fundingPercent = getProgressPercent(ev.funding_fulfilled, ev.funding_goal);
-              const laborPercent = getProgressPercent(ev.labor_fulfilled, ev.labor_goal);
+              const fundingPercent = getProgressPercent(
+                ev.funding_fulfilled,
+                ev.funding_goal,
+              );
+              const laborPercent = getProgressPercent(
+                ev.labor_fulfilled,
+                ev.labor_goal,
+              );
               const resources = ev.resources || [];
 
               return (
-                <div
+                <article
                   key={getId(ev)}
-                  style={styles.eventCard}
-                  onMouseOver={(e) => (e.currentTarget.style.transform = 'translateY(-5px)')}
-                  onMouseOut={(e) => (e.currentTarget.style.transform = 'translateY(0)')}
                   onClick={() => navigate(`/event/${getId(ev)}`)}
+                  style={{
+                    background: "white",
+                    borderRadius: "28px",
+                    overflow: "hidden",
+                    boxShadow: "0 22px 55px rgba(15, 47, 36, 0.08)",
+                    cursor: "pointer",
+                    border: "1px solid #ecf5ef",
+                  }}
                 >
-                  {/* Card Header */}
-                  <div style={styles.cardHeader}>
-                    <span
+                  <div
+                    style={{
+                      padding: "24px",
+                      background:
+                        "radial-gradient(circle at top right, rgba(134,239,172,0.35), transparent 22%), linear-gradient(135deg, #f4fff7 0%, #def7e5 100%)",
+                      borderBottom: "1px solid #e3f1e8",
+                    }}
+                  >
+                    <div
                       style={{
-                        ...styles.initiationBadge,
-                        background: ev.initiation_type === 'Sponsor-Led' ? '#ff9f1c' : '#2a9d8f',
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: "12px",
+                        alignItems: "flex-start",
                       }}
                     >
-                      {ev.initiation_type}
-                    </span>
-
-                    <p style={{ fontSize: '11px', color: '#666', margin: 0 }}>ID: {ev.event_id}</p>
-                    <h3 style={{ fontSize: '20px', color: '#1b4332', margin: '5px 0' }}>{ev.location}</h3>
-                    <p style={{ fontSize: '14px', color: '#2d6a4f', fontWeight: 'bold', margin: 0 }}>
-                      🌳 {ev.tree_count} {ev.tree_species || 'Trees'}
-                    </p>
-                  </div>
-
-                  <div style={styles.eventBody}>
-                    <p style={{ fontSize: '13px', color: '#666', margin: '0 0 5px' }}>
-                      <i className="fas fa-clock"></i> {formatDate(ev.date_time)}
-                    </p>
-                    <p style={{ fontSize: '12px', color: '#888', margin: 0 }}>
-                      <i className="fas fa-user"></i> By: {ev.creator?.name || 'Unknown'}
+                      <div>
+                        <div
+                          style={{
+                            color: "#52796f",
+                            fontSize: "12px",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.08em",
+                          }}
+                        >
+                          {ev.event_id}
+                        </div>
+                        <h3
+                          style={{
+                            margin: "8px 0 6px",
+                            fontSize: "24px",
+                            color: "#163126",
+                          }}
+                        >
+                          {ev.location}
+                        </h3>
+                        <div style={{ color: "#2d6a4f", fontWeight: 700 }}>
+                          {ev.tree_count} trees ·{" "}
+                          {ev.tree_species || "Mixed species"}
+                        </div>
+                      </div>
                       <span
                         style={{
-                          ...styles.approvalBadge,
-                          background: ev.approval_mode === 'Auto' ? '#d8f3dc' : '#fff3cd',
-                          color: ev.approval_mode === 'Auto' ? '#2d6a4f' : '#856404',
+                          background: phaseTone[ev.current_phase] || "#2d6a4f",
+                          color: "white",
+                          padding: "8px 12px",
+                          borderRadius: "999px",
+                          fontSize: "11px",
+                          fontWeight: 800,
+                          whiteSpace: "nowrap",
                         }}
                       >
-                        {ev.approval_mode === 'Auto' ? '✓ Auto-Accept' : '⏳ Manual Review'}
+                        {ev.current_phase?.replace("_", " ")}
                       </span>
-                    </p>
+                    </div>
+                  </div>
 
-                    {/* Progress Bars */}
-                    <div style={styles.progressSection}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '5px' }}>
-                        <span><i className="fas fa-rupee-sign"></i> Funding</span>
-                        <span>₹{ev.funding_fulfilled || 0} / ₹{ev.funding_goal || 0}</span>
+                  <div style={{ padding: "22px" }}>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: "14px",
+                        marginBottom: "16px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          background: "#f4fbf6",
+                          borderRadius: "18px",
+                          padding: "14px",
+                        }}
+                      >
+                        <div style={{ color: "#52796f", fontSize: "12px" }}>
+                          Date
+                        </div>
+                        <div
+                          style={{
+                            marginTop: "6px",
+                            fontWeight: 700,
+                            color: "#163126",
+                            lineHeight: 1.4,
+                          }}
+                        >
+                          {formatDate(ev.date_time)}
+                        </div>
                       </div>
-                      <div style={styles.progressBar}>
-                        <div style={{ ...styles.progressFill, width: `${fundingPercent}%`, background: fundingPercent >= 100 ? '#2d6a4f' : '#ff9f1c' }}></div>
-                      </div>
-
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '5px' }}>
-                        <span><i className="fas fa-users"></i> Volunteers</span>
-                        <span>{ev.labor_fulfilled || 0} / {ev.labor_goal || 0}</span>
-                      </div>
-                      <div style={styles.progressBar}>
-                        <div style={{ ...styles.progressFill, width: `${laborPercent}%`, background: laborPercent >= 100 ? '#2d6a4f' : '#3b82f6' }}></div>
+                      <div
+                        style={{
+                          background: "#f4fbf6",
+                          borderRadius: "18px",
+                          padding: "14px",
+                        }}
+                      >
+                        <div style={{ color: "#52796f", fontSize: "12px" }}>
+                          Organizer
+                        </div>
+                        <div
+                          style={{
+                            marginTop: "6px",
+                            fontWeight: 700,
+                            color: "#163126",
+                          }}
+                        >
+                          {ev.creator?.organization_name ||
+                            ev.creator?.name ||
+                            "Unknown"}
+                        </div>
                       </div>
                     </div>
 
-                    {/* Resource Tags */}
-                    <div style={styles.resourceTags}>
-                      {resources.map((r) => (
-                        <span
-                          key={getId(r) || r.resource_type}
+                    <div style={{ marginBottom: "14px" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          fontSize: "13px",
+                          color: "#3f5f53",
+                          marginBottom: "6px",
+                        }}
+                      >
+                        <span>Funding readiness</span>
+                        <strong>
+                          ₹{ev.funding_fulfilled || 0} / ₹{ev.funding_goal || 0}
+                        </strong>
+                      </div>
+                      <div
+                        style={{
+                          height: "10px",
+                          background: "#e8f3eb",
+                          borderRadius: "999px",
+                          overflow: "hidden",
+                        }}
+                      >
+                        <div
                           style={{
-                            ...styles.resourceTag,
-                            background: r.status === 'Complete' ? '#d8f3dc' : r.status === 'Partial' ? '#fff3cd' : '#f8d7da',
-                            color: r.status === 'Complete' ? '#2d6a4f' : r.status === 'Partial' ? '#856404' : '#721c24',
+                            width: `${fundingPercent}%`,
+                            height: "100%",
+                            background:
+                              "linear-gradient(90deg, #f59e0b, #22c55e)",
+                          }}
+                        ></div>
+                      </div>
+                    </div>
+
+                    <div style={{ marginBottom: "16px" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          fontSize: "13px",
+                          color: "#3f5f53",
+                          marginBottom: "6px",
+                        }}
+                      >
+                        <span>Volunteer readiness</span>
+                        <strong>
+                          {ev.labor_fulfilled || 0} / {ev.labor_goal || 0}
+                        </strong>
+                      </div>
+                      <div
+                        style={{
+                          height: "10px",
+                          background: "#e8f3eb",
+                          borderRadius: "999px",
+                          overflow: "hidden",
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: `${laborPercent}%`,
+                            height: "100%",
+                            background:
+                              "linear-gradient(90deg, #0ea5e9, #22c55e)",
+                          }}
+                        ></div>
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: "8px",
+                        marginBottom: "18px",
+                      }}
+                    >
+                      {resources.slice(0, 4).map((resource) => (
+                        <span
+                          key={`${getId(resource)}-${resource.resource_type}`}
+                          style={{
+                            padding: "8px 12px",
+                            borderRadius: "999px",
+                            background:
+                              resource.status === "Complete"
+                                ? "#dcfce7"
+                                : resource.status === "Partial"
+                                  ? "#fef3c7"
+                                  : "#ecfdf5",
+                            color:
+                              resource.status === "Complete"
+                                ? "#166534"
+                                : resource.status === "Partial"
+                                  ? "#92400e"
+                                  : "#166534",
+                            fontSize: "12px",
+                            fontWeight: 700,
                           }}
                         >
-                          {r.status === 'Complete' ? '✓' : r.status === 'Partial' ? '◐' : '○'} {r.resource_type}
+                          {resource.resource_type}
                         </span>
                       ))}
                     </div>
 
-                    {/* Phase Tracker */}
-                    {ev.is_ready_to_start && (
-                      <div style={styles.phaseTracker}>
-                        {PHASES.slice(1, 7).map((phase, index) => {
-                          const currentPhaseIndex = PHASES.findIndex((p) => p.key === ev.current_phase);
-                          const isActive = currentPhaseIndex > index;
-                          const isCurrent = currentPhaseIndex === index + 1;
-
-                          return (
-                            <div key={phase.key} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, minWidth: '45px' }}>
-                              <div
-                                style={{
-                                  width: '30px',
-                                  height: '30px',
-                                  borderRadius: '50%',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  marginBottom: '4px',
-                                  fontSize: '11px',
-                                  background: isActive ? '#2d6a4f' : isCurrent ? '#ff9f1c' : '#e0e0e0',
-                                  color: isActive || isCurrent ? 'white' : '#999',
-                                }}
-                              >
-                                <i className={`fas ${phase.icon}`}></i>
-                              </div>
-                              <span style={{ fontSize: '8px', fontWeight: 'bold', textTransform: 'uppercase', color: isActive || isCurrent ? '#2d6a4f' : '#999' }}>
-                                {phase.label}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {/* Volunteer Section */}
-                    <div style={styles.volunteerSection}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <div style={styles.avatarGroup}>
-                          {volunteers.slice(0, 4).map((v, i) => (
-                            <div
-                              key={getId(v) || i}
-                              style={{ ...styles.avatar, background: v.contribution_type === 'Capital' ? '#ff9f1c' : '#2d6a4f' }}
-                            >
-                              {getInitials(v.user?.name)}
-                            </div>
-                          ))}
-                        </div>
-                        <div style={{ fontSize: '11px', color: '#666' }}>
-                          <div>{laborVolunteers.length} Volunteers</div>
-                          <div>{sponsors.length} Sponsors</div>
-                        </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: "18px",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center" }}>
+                        {volunteers.slice(0, 4).map((volunteer, index) => (
+                          <div
+                            key={`${getId(volunteer)}-${index}`}
+                            style={{
+                              width: "34px",
+                              height: "34px",
+                              borderRadius: "50%",
+                              background: "#1b4332",
+                              color: "white",
+                              display: "grid",
+                              placeItems: "center",
+                              marginLeft: index === 0 ? 0 : -10,
+                              border: "2px solid white",
+                              fontSize: "11px",
+                              fontWeight: 800,
+                            }}
+                          >
+                            {getInitials(volunteer.user?.name)}
+                          </div>
+                        ))}
+                        <span
+                          style={{
+                            marginLeft: "12px",
+                            fontSize: "13px",
+                            color: "#52796f",
+                          }}
+                        >
+                          {volunteers.length} people engaged
+                        </span>
                       </div>
 
                       <button
-                        style={styles.joinBtn}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleJoinClick(ev);
+                        onClick={(e) => handleJoinClick(ev, e)}
+                        style={{
+                          border: "none",
+                          background:
+                            "linear-gradient(135deg, #2d6a4f, #1b4332)",
+                          color: "white",
+                          borderRadius: "16px",
+                          padding: "12px 18px",
+                          cursor: "pointer",
+                          fontWeight: 800,
                         }}
                       >
-                        <i className="fas fa-hand-paper"></i> Request to Join
+                        Join Event
                       </button>
                     </div>
                   </div>
-                </div>
+                </article>
               );
             })}
           </div>
         )}
-      </div>
 
-      {/* Join Event Modal */}
-      {showJoinModal && selectedEvent && (
-        <JoinEventModal
-          event={selectedEvent}
-          onClose={() => {
-            setShowJoinModal(false);
-            setSelectedEvent(null);
-          }}
-          onSuccess={handleJoinSuccess}
-        />
-      )}
+        {showJoinModal && selectedEvent && (
+          <JoinEventModal
+            event={selectedEvent}
+            onClose={() => setShowJoinModal(false)}
+            onSuccess={handleJoinSuccess}
+          />
+        )}
+      </main>
     </div>
   );
 };

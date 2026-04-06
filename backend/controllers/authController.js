@@ -1,14 +1,24 @@
 import * as authService from '../services/authService.js';
 
 export const register = async (req, res) => {
-  const { name, email, password, role } = req.body;
+  const { name, email, password, role, account_type, organization_name, phone, sponsor_logo_url, bio } = req.body;
 
   if (!name || !email || !password) {
     return res.status(400).json({ message: 'Name, email and password are required' });
   }
 
   try {
-    const result = await authService.registerUser(name, email, password, role);
+    const result = await authService.registerUser({
+      name,
+      email,
+      password,
+      role,
+      account_type,
+      organization_name,
+      phone,
+      sponsor_logo_url,
+      bio,
+    });
     res.status(201).json({
       message: 'Registration successful',
       ...result,
@@ -40,6 +50,16 @@ export const getMe = async (req, res) => {
     const user = await authService.getCurrentUser(req.user.id);
     res.json(user);
   } catch (err) {
+    res.status(err.status || 500).json({ message: err.message || 'Server error' });
+  }
+};
+
+export const getProfile = async (req, res) => {
+  try {
+    const profile = await authService.getUserProfile(req.user.id);
+    res.json(profile);
+  } catch (err) {
+    console.error('authController.getProfile failed:', err);
     res.status(err.status || 500).json({ message: err.message || 'Server error' });
   }
 };

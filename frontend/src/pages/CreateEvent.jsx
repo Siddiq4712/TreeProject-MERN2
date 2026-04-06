@@ -1,911 +1,512 @@
-import { useState, useEffect, useContext } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
+import { ToastContext } from '../context/toast-context';
+import { useResponsive } from '../hooks/useResponsive';
+
+const fieldStyle = {
+  width: '100%',
+  padding: '14px 16px',
+  borderRadius: '16px',
+  border: '1px solid #d4e9db',
+  background: '#fbfffc',
+  fontSize: '15px',
+  outline: 'none',
+  boxSizing: 'border-box',
+};
+
+const noLandChoices = [
+  'Help find a suitable land',
+  'Assist in land preparation',
+  'Pre-digging support',
+];
 
 const CreateEvent = () => {
-  const { user } = useContext(AuthContext);
   const navigate = useNavigate();
-
-  const [eventID, setEventID] = useState('TN 69 - Loading...');
-  const [eventLoc, setEventLoc] = useState('KOVILPATTAI New Busstand');
-  const [role, setRole] = useState('Volunteer');
-  const [budget, setBudget] = useState('');
-  const [treeCount, setTreeCount] = useState('100');
-  const [landAllocated, setLandAllocated] = useState('NO');
-  const [latlong, setLatlong] = useState('');
-  const [area, setArea] = useState('');
-  const [noLandOptions, setNoLandOptions] = useState([]);
-  const [noSponsorOk, setNoSponsorOk] = useState('YES');
-  const [eventDateTime, setEventDateTime] = useState('');
-  const [treeSpecies, setTreeSpecies] = useState('');
-  const [maintenancePlan, setMaintenancePlan] = useState('');
-  const [contactName, setContactName] = useState('');
-  const [contactPhone, setContactPhone] = useState('');
-  const [contactEmail, setContactEmail] = useState('');
-  const [agreeTerms, setAgreeTerms] = useState(false);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const { showToast } = useContext(ToastContext);
+  const { isMobile } = useResponsive();
   const [lands, setLands] = useState([]);
-  const [selectedLandId, setSelectedLandId] = useState('');
-  const [initiationType, setInitiationType] = useState('Volunteer-Led');
-  const [fundingGoal, setFundingGoal] = useState('');
-  const [laborGoal, setLaborGoal] = useState('');
-
-  // Helper to get ID (handles both MongoDB _id and SQL id)
-  const getId = (item) => item?._id || item?.id;
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [customTreeCount, setCustomTreeCount] = useState('');
+  const [form, setForm] = useState({
+    event_id: 'TN 69 - Loading...',
+    location_code: 'TN 69',
+    location: 'KOVILPATTAI New Busstand',
+    role: 'Volunteer',
+    budget: '',
+    tree_count: '100',
+    land_allocation_status: 'NEEDED',
+    selected_land_id: '',
+    proposed_latitude: '',
+    proposed_longitude: '',
+    proposed_area_sqft: '',
+    land_support_options: [],
+    land_support_other: '',
+    can_run_without_sponsorship: true,
+    date_time: '',
+    expected_volunteers: '',
+    tree_species: '',
+    maintenance_plan: '',
+    community_engagement_strategy: '',
+    media_coverage: true,
+    social_media_handles: '',
+    contact_name: '',
+    contact_phone: '',
+    contact_email: '',
+    approval_mode: 'Manual',
+    initiation_type: 'Volunteer-Led',
+    description: '',
+    climate_zone: '',
+  });
 
   useEffect(() => {
     const random10Digit = Math.floor(1000000000 + Math.random() * 9000000000);
-    setEventID(`TN 69 - ${random10Digit}`);
+    setForm((current) => ({ ...current, event_id: `TN 69 - ${random10Digit}` }));
+
     const fetchLands = async () => {
       try {
         const res = await api.get('/lands/mine');
         setLands(res.data);
-      } catch (err) { console.error(err); }
+      } catch (err) {
+        console.error('CreateEvent fetchLands failed:', err);
+      }
     };
+
     fetchLands();
   }, []);
 
+  const updateField = (key, value) => setForm((current) => ({ ...current, [key]: value }));
+
+  const selectedLand = useMemo(
+    () => lands.find((land) => (land._id || land.id) === form.selected_land_id) || null,
+    [lands, form.selected_land_id]
+  );
+
   const getLocation = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => setLatlong(`${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`),
-        () => alert('Unable to retrieve location.')
-      );
-    } else alert('Geolocation not supported by browser.');
+    if (!navigator.geolocation) {
+      showToast('Geolocation is not supported in this browser.', 'error');
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        updateField('proposed_latitude', position.coords.latitude.toFixed(6));
+        updateField('proposed_longitude', position.coords.longitude.toFixed(6));
+        showToast('Land coordinates captured.', 'success');
+      },
+      (err) => {
+        console.error('CreateEvent getLocation failed:', err);
+        showToast('Unable to retrieve current location.', 'error');
+      }
+    );
   };
 
-  const handleNoLandChange = (e) => {
-    const value = e.target.value;
-    e.target.checked
-      ? setNoLandOptions([...noLandOptions, value])
-      : setNoLandOptions(noLandOptions.filter((opt) => opt !== value));
+  const handleNoLandOption = (value, checked) => {
+    const next = checked
+      ? [...form.land_support_options, value]
+      : form.land_support_options.filter((item) => item !== value);
+    updateField('land_support_options', next);
+  };
+
+  const resolveTreeCount = () => {
+    if (form.tree_count === 'Other') {
+      return Number(customTreeCount || 0);
+    }
+    return Number(form.tree_count || 0);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
-    if (!eventDateTime) { setError('Please select an Event Date and Time'); setLoading(false); return; }
-    if (!agreeTerms) { setError('You must agree to the Terms & Conditions'); setLoading(false); return; }
+
+    const treeCount = resolveTreeCount();
+    if (!form.date_time || !treeCount) {
+      const message = 'Event date and valid tree count are required.';
+      setError(message);
+      showToast(message, 'error');
+      setLoading(false);
+      return;
+    }
+
+    if (!form.contact_name || !form.contact_phone || !form.contact_email) {
+      const message = 'Contact person name, phone, and email are required.';
+      setError(message);
+      showToast(message, 'error');
+      setLoading(false);
+      return;
+    }
+
+    const payload = {
+      event_id: form.event_id,
+      location_code: form.location_code,
+      location: form.location,
+      role: form.role,
+      budget: form.budget ? parseFloat(form.budget) : 0,
+      tree_count: treeCount,
+      tree_species: form.tree_species,
+      date_time: form.date_time,
+      land_id: form.land_allocation_status === 'ALLOCATED' ? form.selected_land_id || null : null,
+      land_allocation_status: form.land_allocation_status,
+      proposed_land:
+        form.land_allocation_status === 'ALLOCATED'
+          ? {
+              latitude: selectedLand?.latitude || Number(form.proposed_latitude || 0) || null,
+              longitude: selectedLand?.longitude || Number(form.proposed_longitude || 0) || null,
+              area_sqft: selectedLand?.area_sqft || Number(form.proposed_area_sqft || 0) || null,
+              address: selectedLand?.address || form.location,
+            }
+          : {
+              latitude: form.proposed_latitude ? Number(form.proposed_latitude) : null,
+              longitude: form.proposed_longitude ? Number(form.proposed_longitude) : null,
+              area_sqft: form.proposed_area_sqft ? Number(form.proposed_area_sqft) : null,
+              address: form.location,
+            },
+      land_support_options: form.land_support_options,
+      land_support_other: form.land_support_other,
+      can_run_without_sponsorship: form.can_run_without_sponsorship,
+      expected_volunteers: Number(form.expected_volunteers || 0),
+      maintenance_plan: form.maintenance_plan,
+      community_engagement_strategy: form.community_engagement_strategy,
+      media_coverage: form.media_coverage,
+      social_media_handles: form.social_media_handles
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean),
+      contact_person: {
+        name: form.contact_name,
+        phone: form.contact_phone,
+        email: form.contact_email,
+      },
+      approval_mode: form.approval_mode,
+      initiation_type: form.initiation_type,
+      description: form.description,
+      climate_zone: form.climate_zone,
+      labor_goal: Number(form.expected_volunteers || 0),
+      funding_goal: form.budget ? Number(form.budget) : null,
+      procurement_status: 'PLANNED',
+    };
+
     try {
-      const payload = {
-        event_id: eventID,
-        location: eventLoc,
-        date_time: eventDateTime,
-        tree_count: parseInt(treeCount === 'Other' ? 0 : treeCount, 10),
-        tree_species: treeSpecies || 'Mixed Trees',
-        budget: budget ? parseFloat(budget) : 0,
-        role,
-        land_id: selectedLandId || null,
-        initiation_type: initiationType,
-        funding_goal: fundingGoal ? parseFloat(fundingGoal) : null,
-        labor_goal: laborGoal ? parseInt(laborGoal) : null,
-      };
       await api.post('/events', payload);
-      alert(`✅ Success! Event ${eventID} has been created.\n\nOther users can now see this event on their dashboard!`);
-      navigate('/dashboard');
+      showToast(`Event ${form.event_id} created successfully.`, 'success');
+      navigate('/my-events');
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to create event.');
+      console.error('CreateEvent handleSubmit failed:', err);
+      const message = err.response?.data?.message || 'Failed to create event.';
+      setError(message);
+      showToast(message, 'error');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <>
-      <style>{`
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    <div
+      style={{
+        minHeight: '100vh',
+        background:
+          'radial-gradient(circle at top right, rgba(187,247,208,0.55), transparent 24%), linear-gradient(180deg, #f6fbf7 0%, #eef7f1 100%)',
+        fontFamily: "'Segoe UI', sans-serif",
+        padding: '28px',
+      }}
+    >
+      <div style={{ maxWidth: '1280px', margin: '0 auto', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '0.85fr 1.15fr', gap: '24px' }}>
+        <section
+          style={{
+            borderRadius: '30px',
+            padding: '30px',
+            color: 'white',
+            background:
+              'radial-gradient(circle at top right, rgba(187,247,208,0.35), transparent 24%), linear-gradient(135deg, #081c15 0%, #1b4332 50%, #2d6a4f 100%)',
+            boxShadow: '0 24px 60px rgba(12, 35, 24, 0.14)',
+          }}
+        >
+          <button
+            onClick={() => navigate('/my-events')}
+            style={{
+              border: '1px solid rgba(255,255,255,0.16)',
+              background: 'rgba(255,255,255,0.08)',
+              color: 'white',
+              borderRadius: '16px',
+              padding: '12px 16px',
+              cursor: 'pointer',
+              fontWeight: 700,
+            }}
+          >
+            <i className="fas fa-arrow-left" style={{ marginRight: '10px' }}></i>
+            Back to Event Studio
+          </button>
 
-        :root {
-          --font: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif";
-          --g950: #052e16;
-          --g900: #14532d;
-          --g800: #166534;
-          --g700: #15803d;
-          --g600: #16a34a;
-          --g500: #22c55e;
-          --g400: #4ade80;
-          --g300: #86efac;
-          --g200: #bbf7d0;
-          --g100: #dcfce7;
-          --g50:  #f0fdf4;
-          --white: #ffffff;
-          --slate50:  #f8fafc;
-          --slate100: #f1f5f9;
-          --slate200: #e2e8f0;
-          --slate300: #cbd5e1;
-          --slate400: #94a3b8;
-          --slate500: #64748b;
-          --slate600: #475569;
-          --slate700: #334155;
-          --slate800: #1e293b;
-          --r-sm: 10px;
-          --r-md: 14px;
-          --r-lg: 18px;
-          --r-xl: 24px;
-        }
+          <div style={{ marginTop: '28px' }}>
+            <div style={{ fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'rgba(255,255,255,0.72)' }}>
+              Plantation Event Builder
+            </div>
+            <h1 style={{ margin: '12px 0 0', fontSize: isMobile ? '28px' : '42px', lineHeight: 1.08 }}>Create a full plantation event with land, support model, volunteers, donors, and field planning.</h1>
+            <p style={{ margin: '14px 0 0', color: 'rgba(255,255,255,0.78)', lineHeight: 1.6, fontSize: isMobile ? '14px' : '17px' }}>
+              This form now follows your event flow, including land allocation, sponsorship fallback, volunteer support, contact details, and tree planning.
+            </p>
+          </div>
 
-        /* ═══════════ PAGE ═══════════ */
-        .ce-page {
-          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-          background: var(--slate100);
-          min-height: 100vh;
-          padding-bottom: 120px;
-          color: var(--slate800);
-        }
+          <div style={{ display: 'grid', gap: '14px', marginTop: '26px' }}>
+            {[
+              ['Auto Event ID', form.event_id],
+              ['Role Focus', `${form.role} · ${form.initiation_type}`],
+              ['Land Status', form.land_allocation_status === 'ALLOCATED' ? 'Land allocated already' : 'Land still needed'],
+              ['Tree Target', `${resolveTreeCount() || 0} planned trees`],
+            ].map(([label, value]) => (
+              <div key={label} style={{ background: 'rgba(255,255,255,0.08)', borderRadius: '20px', padding: isMobile ? '14px' : '18px' }}>
+                <div style={{ color: 'rgba(255,255,255,0.68)', fontSize: '13px' }}>{label}</div>
+                <div style={{ fontSize: isMobile ? '18px' : '22px', fontWeight: 800, marginTop: '6px' }}>{value}</div>
+              </div>
+            ))}
+          </div>
+        </section>
 
-        /* ═══════════ TOP BAR ═══════════ */
-        .ce-topbar {
-          background: var(--white);
-          border-bottom: 3px solid var(--g200);
-          padding: 0 36px;
-          height: 70px;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          position: sticky;
-          top: 0;
-          z-index: 300;
-          box-shadow: 0 4px 20px rgba(21,128,61,.08);
-        }
-        .ce-topbar-left { display: flex; align-items: center; gap: 20px; }
+        <section
+          style={{
+            background: 'rgba(255,255,255,0.96)',
+            borderRadius: '30px',
+            padding: isMobile ? '20px' : '32px',
+            boxShadow: '0 24px 60px rgba(15, 47, 36, 0.08)',
+            border: '1px solid #e8f3eb',
+          }}
+        >
+          <h2 style={{ margin: 0, color: '#163126', fontSize: isMobile ? '24px' : '32px' }}>Tree Plantation Event Creation Form</h2>
+          <p style={{ margin: '8px 0 24px', color: '#52796f', lineHeight: 1.6 }}>
+            Fill the complete event setup and submit when your plantation plan is ready.
+          </p>
 
-        .ce-back-btn {
-          display: inline-flex; align-items: center; gap: 8px;
-          background: var(--g50); border: 2px solid var(--g200);
-          color: var(--g800); padding: 10px 20px; border-radius: 50px;
-          cursor: pointer; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-          font-size: 14px; font-weight: 600;
-          transition: all .22s; white-space: nowrap;
-        }
-        .ce-back-btn:hover {
-          background: var(--g700); border-color: var(--g700);
-          color: white; box-shadow: 0 4px 14px rgba(21,128,61,.3);
-          transform: translateX(-2px);
-        }
+          {error && (
+            <div style={{ marginBottom: '16px', background: '#fff1f2', color: '#be123c', padding: '14px 16px', borderRadius: '16px' }}>
+              {error}
+            </div>
+          )}
 
-        .ce-topbar-brand {
-          font-size: 22px; font-weight: 700;
-          color: var(--g800); letter-spacing: -.3px;
-          display: flex; align-items: center; gap: 8px;
-        }
-        .ce-topbar-brand span { font-weight: 400; color: var(--slate400); font-size: 18px; }
+          <form onSubmit={handleSubmit}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+              <div>
+                <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Event ID</label>
+                <input value={form.event_id} readOnly style={fieldStyle} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Location Code</label>
+                <input value={form.location_code} onChange={(e) => updateField('location_code', e.target.value)} style={fieldStyle} />
+              </div>
+            </div>
 
-        .ce-topbar-right { display: flex; align-items: center; gap: 12px; }
-        .ce-id-badge {
-          background: linear-gradient(135deg, var(--g800), var(--g950));
-          color: white; padding: 8px 18px; border-radius: 50px;
-          font-size: 12px; font-weight: 700; letter-spacing: .8px;
-          display: flex; align-items: center; gap: 8px;
-          box-shadow: 0 4px 14px rgba(21,128,61,.35);
-        }
-        .ce-live { width: 8px; height: 8px; background: var(--g400); border-radius: 50%; animation: pulse 2s infinite; }
-        @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(1.4)} }
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Event Location</label>
+              <input value={form.location} onChange={(e) => updateField('location', e.target.value)} style={fieldStyle} required />
+            </div>
 
-        /* ═══════════ SHELL ═══════════ */
-        .ce-shell {
-          max-width: 1160px;
-          margin: 0 auto;
-          padding: 36px 32px 0;
-          display: grid;
-          grid-template-columns: 260px 1fr;
-          gap: 28px;
-          align-items: start;
-        }
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+              <div>
+                <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Your Role</label>
+                <select value={form.role} onChange={(e) => updateField('role', e.target.value)} style={fieldStyle}>
+                  <option value="Volunteer">Volunteering</option>
+                  <option value="Sponsor">Sponsoring</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Initiation Type</label>
+                <select value={form.initiation_type} onChange={(e) => updateField('initiation_type', e.target.value)} style={fieldStyle}>
+                  <option value="Volunteer-Led">Volunteer-Led</option>
+                  <option value="Sponsor-Led">Sponsor-Led</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Approval Mode</label>
+                <select value={form.approval_mode} onChange={(e) => updateField('approval_mode', e.target.value)} style={fieldStyle}>
+                  <option value="Manual">Manual</option>
+                  <option value="Auto">Auto</option>
+                </select>
+              </div>
+            </div>
 
-        /* ═══════════ SIDEBAR ═══════════ */
-        .ce-sidebar {
-          position: sticky;
-          top: 90px;
-          display: flex;
-          flex-direction: column;
-          gap: 16px;
-        }
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+              <div>
+                <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Sponsorship Budget (Approx.)</label>
+                <input type="number" value={form.budget} onChange={(e) => updateField('budget', e.target.value)} placeholder="₹ amount" style={fieldStyle} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Number of Trees</label>
+                <select value={form.tree_count} onChange={(e) => updateField('tree_count', e.target.value)} style={fieldStyle}>
+                  <option value="10">10</option>
+                  <option value="100">100</option>
+                  <option value="200">200</option>
+                  <option value="500">500</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+            </div>
 
-        .ce-sid-hero {
-          background: linear-gradient(160deg, var(--g700) 0%, var(--g950) 100%);
-          border-radius: var(--r-xl);
-          padding: 28px 24px;
-          color: white;
-          position: relative;
-          overflow: hidden;
-          box-shadow: 0 8px 32px rgba(21,128,61,.3);
-        }
-        .ce-sid-hero::before {
-          content: '';
-          position: absolute; inset: 0;
-          background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none'%3E%3Ccircle cx='30' cy='30' r='20' stroke='rgba(255,255,255,0.05)' stroke-width='1'/%3E%3Ccircle cx='30' cy='30' r='10' stroke='rgba(255,255,255,0.05)' stroke-width='1'/%3E%3C/g%3E%3C/svg%3E") repeat;
-          opacity: .5;
-        }
-        .ce-sid-hero::after {
-          content: '🌿'; position: absolute;
-          font-size: 90px; right: -18px; bottom: -18px; opacity: .12;
-        }
-        .ce-sid-label {
-          font-size: 11px; text-transform: uppercase; letter-spacing: 2.5px;
-          opacity: .6; font-weight: 600; margin-bottom: 10px; position: relative;
-        }
-        .ce-sid-id {
-          font-size: 14px; font-weight: 700; line-height: 1.5;
-          word-break: break-all; position: relative;
-          display: flex; align-items: flex-start; gap: 8px;
-        }
+            {form.tree_count === 'Other' && (
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Custom Tree Count</label>
+                <input type="number" value={customTreeCount} onChange={(e) => setCustomTreeCount(e.target.value)} style={fieldStyle} />
+              </div>
+            )}
 
-        .ce-sid-stats {
-          display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
-        }
-        .ce-stat {
-          background: var(--white);
-          border: 2px solid var(--g100);
-          border-radius: var(--r-md);
-          padding: 14px;
-          text-align: center;
-        }
-        .ce-stat-val {
-          font-size: 24px; font-weight: 800; color: var(--g700); line-height: 1;
-        }
-        .ce-stat-key {
-          font-size: 11px; color: var(--slate400); margin-top: 4px; font-weight: 500;
-        }
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Land Allocation Already</label>
+              <select value={form.land_allocation_status} onChange={(e) => updateField('land_allocation_status', e.target.value)} style={fieldStyle}>
+                <option value="ALLOCATED">Yes</option>
+                <option value="NEEDED">No</option>
+              </select>
+            </div>
 
-        .ce-nav {
-          background: var(--white);
-          border: 2px solid var(--slate200);
-          border-radius: var(--r-lg);
-          overflow: hidden;
-          box-shadow: 0 2px 10px rgba(0,0,0,.04);
-        }
-        .ce-nav-head {
-          padding: 12px 18px 10px;
-          font-size: 11px; font-weight: 700; letter-spacing: 1.5px;
-          color: var(--slate400); text-transform: uppercase;
-          border-bottom: 1px solid var(--slate100);
-          background: var(--slate50);
-        }
-        .ce-nav-item {
-          display: flex; align-items: center; gap: 12px;
-          padding: 13px 18px;
-          font-size: 14px; font-weight: 500; color: var(--slate500);
-          border-bottom: 1px solid var(--slate100);
-          cursor: pointer; text-decoration: none;
-          transition: all .18s;
-        }
-        .ce-nav-item:last-child { border-bottom: none; }
-        .ce-nav-item:hover { background: var(--g50); color: var(--g700); padding-left: 22px; }
-        .ce-nav-ico {
-          width: 32px; height: 32px; border-radius: 8px;
-          background: var(--slate100);
-          display: flex; align-items: center; justify-content: center;
-          font-size: 15px; flex-shrink: 0; transition: background .18s;
-        }
-        .ce-nav-item:hover .ce-nav-ico { background: var(--g100); }
+            {form.land_allocation_status === 'ALLOCATED' ? (
+              <>
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Allocated Land</label>
+                  <select value={form.selected_land_id} onChange={(e) => updateField('selected_land_id', e.target.value)} style={fieldStyle}>
+                    <option value="">Select from your land bank</option>
+                    {lands.map((land) => (
+                      <option key={land._id || land.id} value={land._id || land.id}>
+                        {land.name} · {land.address}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-        /* ═══════════ MAIN ═══════════ */
-        .ce-main { min-width: 0; }
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr auto', gap: '14px', marginBottom: '14px', alignItems: 'end' }}>
+                  <div>
+                    <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Latitude</label>
+                    <input value={selectedLand?.latitude || form.proposed_latitude} onChange={(e) => updateField('proposed_latitude', e.target.value)} style={fieldStyle} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Longitude</label>
+                    <input value={selectedLand?.longitude || form.proposed_longitude} onChange={(e) => updateField('proposed_longitude', e.target.value)} style={fieldStyle} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Total Area</label>
+                    <input value={selectedLand?.area_sqft || form.proposed_area_sqft} onChange={(e) => updateField('proposed_area_sqft', e.target.value)} style={fieldStyle} />
+                  </div>
+                  <button type="button" onClick={getLocation} style={{ ...fieldStyle, background: '#163126', color: 'white', border: 'none', cursor: 'pointer', height: '48px' }}>
+                    Use GPS
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div style={{ marginBottom: '14px', padding: '18px', borderRadius: '20px', background: '#f5fbf7', border: '1px solid #e0efe6' }}>
+                <div style={{ fontWeight: 700, color: '#163126', marginBottom: '12px' }}>If No, Volunteers can</div>
+                <div style={{ display: 'grid', gap: '10px' }}>
+                  {noLandChoices.map((choice) => (
+                    <label key={choice} style={{ display: 'flex', gap: '10px', alignItems: 'center', color: '#35584a' }}>
+                      <input
+                        type="checkbox"
+                        checked={form.land_support_options.includes(choice)}
+                        onChange={(e) => handleNoLandOption(choice, e.target.checked)}
+                      />
+                      {choice}
+                    </label>
+                  ))}
+                </div>
+                <input
+                  value={form.land_support_other}
+                  onChange={(e) => updateField('land_support_other', e.target.value)}
+                  placeholder="Other support volunteers can provide"
+                  style={{ ...fieldStyle, marginTop: '12px' }}
+                />
+              </div>
+            )}
 
-        /* ═══════════ SECTION CARD ═══════════ */
-        .ce-card {
-          background: var(--white);
-          border: 2px solid var(--slate200);
-          border-radius: var(--r-xl);
-          margin-bottom: 24px;
-          box-shadow: 0 4px 20px rgba(0,0,0,.05);
-          overflow: hidden;
-          transition: box-shadow .2s;
-        }
-        .ce-card:hover { box-shadow: 0 8px 32px rgba(0,0,0,.08); }
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+              <div>
+                <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Event Date & Time</label>
+                <input type="datetime-local" value={form.date_time} onChange={(e) => updateField('date_time', e.target.value)} style={fieldStyle} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Expected Volunteers</label>
+                <input type="number" value={form.expected_volunteers} onChange={(e) => updateField('expected_volunteers', e.target.value)} style={fieldStyle} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Climate / Area Hint</label>
+                <input value={form.climate_zone} onChange={(e) => updateField('climate_zone', e.target.value)} placeholder="Dry, humid, semi-arid..." style={fieldStyle} />
+              </div>
+            </div>
 
-        .ce-card-head {
-          display: flex; align-items: center; gap: 16px;
-          padding: 22px 28px;
-          border-bottom: 2px solid var(--slate100);
-          background: linear-gradient(to right, var(--g50) 0%, white 70%);
-          position: relative;
-        }
-        .ce-card-head::after {
-          content: ''; position: absolute;
-          left: 0; top: 0; bottom: 0;
-          width: 5px; background: linear-gradient(to bottom, var(--g500), var(--g700));
-          border-radius: 0 0 0 0;
-        }
-        .ce-card-icon {
-          width: 46px; height: 46px; border-radius: 12px;
-          background: var(--g100);
-          display: flex; align-items: center; justify-content: center;
-          font-size: 22px; flex-shrink: 0;
-          border: 2px solid var(--g200);
-        }
-        .ce-card-title {
-          font-size: 18px; font-weight: 700; color: var(--g900); letter-spacing: -.2px;
-        }
-        .ce-card-sub { font-size: 13px; color: var(--slate400); margin-top: 2px; }
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+              <div>
+                <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Event without Sponsorship</label>
+                <select value={form.can_run_without_sponsorship ? 'YES' : 'NO'} onChange={(e) => updateField('can_run_without_sponsorship', e.target.value === 'YES')} style={fieldStyle}>
+                  <option value="YES">Yes</option>
+                  <option value="NO">No</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Media Coverage</label>
+                <select value={form.media_coverage ? 'YES' : 'NO'} onChange={(e) => updateField('media_coverage', e.target.value === 'YES')} style={fieldStyle}>
+                  <option value="YES">Yes</option>
+                  <option value="NO">No</option>
+                </select>
+              </div>
+            </div>
 
-        /* ═══════════ FIELD ROW ═══════════ */
-        .ce-row {
-          display: grid;
-          grid-template-columns: 220px 1fr;
-          border-bottom: 1px solid var(--slate100);
-        }
-        .ce-row:last-child { border-bottom: none; }
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Tree Species</label>
+              <input value={form.tree_species} onChange={(e) => updateField('tree_species', e.target.value)} placeholder="Neem, Pongamia, Tamarind..." style={fieldStyle} />
+            </div>
 
-        .ce-row-lhs {
-          padding: 20px 24px;
-          border-right: 2px solid var(--slate100);
-          background: var(--slate50);
-          display: flex; flex-direction: column; justify-content: center;
-        }
-        .ce-row-label {
-          font-size: 13px; font-weight: 700; color: var(--slate700);
-          line-height: 1.4; letter-spacing: .1px;
-        }
-        .ce-row-hint { font-size: 12px; color: var(--slate400); margin-top: 4px; line-height: 1.45; }
-        .ce-req { color: #ef4444; margin-left: 2px; font-size: 15px; }
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Maintenance Plan</label>
+              <textarea value={form.maintenance_plan} onChange={(e) => updateField('maintenance_plan', e.target.value)} style={{ ...fieldStyle, minHeight: '90px', resize: 'vertical' }} />
+            </div>
 
-        .ce-row-rhs {
-          padding: 18px 24px;
-          display: flex; flex-direction: column; justify-content: center;
-        }
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Community Engagement Strategy</label>
+              <textarea value={form.community_engagement_strategy} onChange={(e) => updateField('community_engagement_strategy', e.target.value)} style={{ ...fieldStyle, minHeight: '90px', resize: 'vertical' }} />
+            </div>
 
-        /* ═══════════ INPUTS ═══════════ */
-        .ce-input, .ce-select, .ce-textarea {
-          width: 100%;
-          background: var(--white);
-          border: 2px solid var(--slate200);
-          border-radius: var(--r-sm);
-          padding: 13px 16px;
-          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-          font-size: 15px; color: var(--slate800);
-          outline: none;
-          transition: border .2s, box-shadow .2s, background .2s;
-          appearance: none; -webkit-appearance: none;
-        }
-        .ce-input::placeholder, .ce-textarea::placeholder { color: var(--slate300); }
-        .ce-input:hover, .ce-select:hover, .ce-textarea:hover { border-color: var(--g300); }
-        .ce-input:focus, .ce-select:focus, .ce-textarea:focus {
-          border-color: var(--g500);
-          box-shadow: 0 0 0 4px rgba(34,197,94,.14);
-          background: var(--g50);
-        }
-        .ce-sel-wrap { position: relative; }
-        .ce-sel-wrap::after {
-          content: '▾'; position: absolute;
-          right: 14px; top: 50%; transform: translateY(-50%);
-          color: var(--g600); pointer-events: none; font-size: 16px; font-weight: bold;
-        }
-        .ce-textarea { resize: vertical; min-height: 96px; line-height: 1.65; }
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Social Media Handles</label>
+              <input value={form.social_media_handles} onChange={(e) => updateField('social_media_handles', e.target.value)} placeholder="@handle1, @handle2" style={fieldStyle} />
+            </div>
 
-        .ce-split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+              <div>
+                <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Contact Name</label>
+                <input value={form.contact_name} onChange={(e) => updateField('contact_name', e.target.value)} style={fieldStyle} required />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Contact Phone</label>
+                <input value={form.contact_phone} onChange={(e) => updateField('contact_phone', e.target.value)} style={fieldStyle} required />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Contact Email</label>
+                <input type="email" value={form.contact_email} onChange={(e) => updateField('contact_email', e.target.value)} style={fieldStyle} required />
+              </div>
+            </div>
 
-        /* ═══════════ PILLS ═══════════ */
-        .ce-pills { display: flex; flex-wrap: wrap; gap: 10px; }
-        .ce-pills input[type="radio"] { display: none; }
-        .ce-pill {
-          display: inline-flex; align-items: center; gap: 7px;
-          padding: 11px 20px;
-          border: 2px solid var(--slate200); border-radius: 50px;
-          cursor: pointer; font-size: 14px; font-weight: 600;
-          color: var(--slate500); background: var(--white);
-          transition: all .2s; white-space: nowrap; user-select: none;
-        }
-        .ce-pill:hover { border-color: var(--g400); color: var(--g700); background: var(--g50); transform: translateY(-1px); }
-        .ce-pills input[type="radio"]:checked + .ce-pill {
-          background: linear-gradient(135deg, var(--g600), var(--g800));
-          border-color: transparent; color: white;
-          box-shadow: 0 4px 14px rgba(21,128,61,.35);
-          transform: translateY(-1px);
-        }
+            <div style={{ marginBottom: '22px' }}>
+              <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Additional Information</label>
+              <textarea value={form.description} onChange={(e) => updateField('description', e.target.value)} style={{ ...fieldStyle, minHeight: '110px', resize: 'vertical' }} />
+            </div>
 
-        /* ═══════════ HINT STRIP ═══════════ */
-        .ce-hint {
-          margin-top: 10px; padding: 10px 16px;
-          background: var(--g50); border-left: 4px solid var(--g400);
-          border-radius: 0 var(--r-sm) var(--r-sm) 0;
-          font-size: 13px; color: var(--g800); line-height: 1.5;
-        }
-
-        /* ═══════════ CHECKBOXES ═══════════ */
-        .ce-checks { display: flex; flex-direction: column; gap: 10px; }
-        .ce-check {
-          display: flex; align-items: center; gap: 12px;
-          padding: 13px 18px;
-          border: 2px solid var(--slate200); border-radius: var(--r-sm);
-          cursor: pointer; font-size: 14px; color: var(--slate600);
-          background: var(--white); transition: all .18s; user-select: none;
-        }
-        .ce-check:hover { border-color: var(--g400); color: var(--g800); background: var(--g50); transform: translateX(3px); }
-        .ce-check input[type="checkbox"] {
-          width: 18px; height: 18px; accent-color: var(--g600);
-          cursor: pointer; flex-shrink: 0;
-        }
-
-        /* Geo btn */
-        .ce-geo {
-          margin-top: 10px; display: inline-flex; align-items: center; gap: 7px;
-          background: var(--slate100); border: 2px solid var(--slate200);
-          color: var(--slate600); padding: 9px 16px; border-radius: var(--r-sm);
-          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-          font-size: 13px; font-weight: 600; cursor: pointer; transition: all .2s;
-        }
-        .ce-geo:hover { background: var(--g50); border-color: var(--g300); color: var(--g700); }
-
-        /* ═══════════ ERROR ═══════════ */
-        .ce-error {
-          display: flex; align-items: center; gap: 12px;
-          background: #fef2f2; border: 2px solid #fecaca;
-          color: #991b1b; padding: 16px 20px;
-          border-radius: var(--r-md); margin-bottom: 24px; font-size: 14px; font-weight: 500;
-        }
-
-        /* ═══════════ ACTION BAR ═══════════ */
-        .ce-actionbar {
-          position: sticky; bottom: 24px;
-          background: var(--white);
-          border: 2px solid var(--slate200);
-          border-radius: var(--r-xl);
-          padding: 22px 28px;
-          box-shadow: 0 12px 48px rgba(0,0,0,.12), 0 0 0 1px rgba(22,163,74,.08) inset;
-          display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
-          margin-top: 8px;
-        }
-        .ce-terms-wrap {
-          flex: 1; min-width: 260px;
-          display: flex; align-items: flex-start; gap: 12px; cursor: pointer;
-        }
-        .ce-terms-wrap input[type="checkbox"] {
-          width: 20px; height: 20px; accent-color: var(--g600);
-          cursor: pointer; flex-shrink: 0; margin-top: 2px;
-        }
-        .ce-terms-text { font-size: 13px; color: var(--slate500); line-height: 1.6; }
-        .ce-terms-text strong { color: var(--g700); font-weight: 700; }
-
-        .ce-submit {
-          flex-shrink: 0;
-          display: inline-flex; align-items: center; justify-content: center; gap: 10px;
-          background: linear-gradient(135deg, var(--g600) 0%, var(--g800) 100%);
-          color: white; border: none; border-radius: var(--r-md);
-          padding: 16px 36px;
-          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-          font-size: 16px; font-weight: 700; cursor: pointer;
-          transition: all .25s; white-space: nowrap;
-          box-shadow: 0 6px 20px rgba(21,128,61,.4);
-          letter-spacing: .2px;
-        }
-        .ce-submit:not(:disabled):hover {
-          background: linear-gradient(135deg, var(--g500) 0%, var(--g700) 100%);
-          box-shadow: 0 10px 30px rgba(21,128,61,.5);
-          transform: translateY(-2px);
-        }
-        .ce-submit:not(:disabled):active { transform: translateY(0); }
-        .ce-submit:disabled { opacity: .5; cursor: not-allowed; transform: none; }
-
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .ce-spin {
-          width: 18px; height: 18px;
-          border: 2.5px solid rgba(255,255,255,.3);
-          border-top-color: white; border-radius: 50%;
-          animation: spin .7s linear infinite;
-        }
-
-        /* ═══════════════════════
-           TABLET  ≤ 900px
-        ═══════════════════════ */
-        @media (max-width: 900px) {
-          .ce-shell { grid-template-columns: 1fr; padding: 24px 20px 0; gap: 22px; }
-          .ce-sidebar { position: static; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-          .ce-sid-hero { grid-column: 1 / -1; }
-          .ce-sid-stats { display: none; }
-          .ce-nav { grid-column: 1 / -1; }
-          .ce-topbar { padding: 0 20px; }
-          .ce-row { grid-template-columns: 180px 1fr; }
-          .ce-actionbar { bottom: 16px; padding: 18px 22px; }
-        }
-
-        /* ═══════════════════════
-           MOBILE  ≤ 600px
-        ═══════════════════════ */
-        @media (max-width: 600px) {
-          .ce-topbar { padding: 0 14px; height: 60px; }
-          .ce-topbar-brand { font-size: 17px; }
-          .ce-id-badge { display: none; }
-          .ce-back-btn { padding: 8px 14px; font-size: 13px; }
-
-          .ce-shell { padding: 16px 12px 0; gap: 16px; }
-          .ce-sidebar { grid-template-columns: 1fr; }
-          .ce-nav { display: none; }
-
-          .ce-row { grid-template-columns: 1fr; }
-          .ce-row-lhs {
-            border-right: none; border-bottom: 1px solid var(--slate100);
-            padding: 14px 18px 10px;
-          }
-          .ce-row-rhs { padding: 14px 18px; }
-
-          .ce-card-head { padding: 18px 18px; }
-          .ce-card-title { font-size: 16px; }
-          .ce-card-head::after { width: 4px; }
-
-          .ce-split { grid-template-columns: 1fr; gap: 10px; }
-
-          .ce-actionbar {
-            bottom: 12px; border-radius: var(--r-lg);
-            flex-direction: column; align-items: stretch; gap: 14px;
-            padding: 16px 18px;
-          }
-          .ce-terms-wrap { min-width: 0; }
-          .ce-submit { width: 100%; padding: 16px; font-size: 16px; justify-content: center; }
-          .ce-pills { gap: 8px; }
-          .ce-pill { padding: 10px 16px; font-size: 13px; }
-        }
-      `}</style>
-
-      <div className="ce-page">
-
-        {/* TOP BAR */}
-        <header className="ce-topbar">
-          <div className="ce-topbar-left">
-            <button className="ce-back-btn" onClick={() => navigate('/dashboard')}>
-              ← Back to Dashboard
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                width: '100%',
+                border: 'none',
+                background: 'linear-gradient(135deg, #2d6a4f, #1b4332)',
+                color: 'white',
+                borderRadius: '18px',
+                padding: '16px',
+                fontWeight: 800,
+                fontSize: '16px',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                opacity: loading ? 0.7 : 1,
+              }}
+            >
+              {loading ? 'Creating Event...' : 'Create Event'}
             </button>
-            <div className="ce-topbar-brand">
-              🌿 Create Event <span>/ Plantation Drive</span>
-            </div>
-          </div>
-          <div className="ce-topbar-right">
-            <div className="ce-id-badge">
-              <span className="ce-live" />
-              {eventID}
-            </div>
-          </div>
-        </header>
-
-        <form onSubmit={handleSubmit}>
-          <div className="ce-shell">
-
-            {/* ══ SIDEBAR ══ */}
-            <aside className="ce-sidebar">
-
-              <div className="ce-sid-hero">
-                <div className="ce-sid-label">Auto-Generated Event ID</div>
-                <div className="ce-sid-id">
-                  <span className="ce-live" style={{marginTop:'6px',flexShrink:0}} />
-                  {eventID}
-                </div>
-              </div>
-
-              <div className="ce-sid-stats">
-                <div className="ce-stat">
-                  <div className="ce-stat-val">🌱</div>
-                  <div className="ce-stat-key">New Event</div>
-                </div>
-                <div className="ce-stat">
-                  <div className="ce-stat-val" style={{color:'var(--g600)',fontSize:'20px'}}>{treeCount}</div>
-                  <div className="ce-stat-key">Trees Planned</div>
-                </div>
-                <div className="ce-stat" style={{gridColumn:'1/-1'}}>
-                  <div className="ce-stat-val" style={{fontSize:'16px',color:'var(--slate600)'}}>📍 {eventLoc.length > 22 ? eventLoc.slice(0,22)+'…' : eventLoc}</div>
-                  <div className="ce-stat-key">Event Location</div>
-                </div>
-              </div>
-
-              <nav className="ce-nav">
-                <div className="ce-nav-head">Sections</div>
-                {[
-                  ['📍','Location','sec-Location'],
-                  ['🤝','Participation','sec-Participation'],
-                  ['🌍','Land Management','sec-LandManagement'],
-                  ['📅','Logistics','sec-Logistics'],
-                  ['👤','Contact','sec-Contact'],
-                ].map(([ico, label, id]) => (
-                  <a key={id} href={`#${id}`} className="ce-nav-item">
-                    <span className="ce-nav-ico">{ico}</span>
-                    {label}
-                  </a>
-                ))}
-              </nav>
-            </aside>
-
-            {/* ══ MAIN ══ */}
-            <main className="ce-main">
-              {error && <div className="ce-error">⚠️ {error}</div>}
-
-              {/* ─ 1. Location ─ */}
-              <div className="ce-card" id="sec-Location">
-                <div className="ce-card-head">
-                  <span className="ce-card-icon">📍</span>
-                  <div>
-                    <div className="ce-card-title">Event Location</div>
-                    <div className="ce-card-sub">Where will the plantation drive take place?</div>
-                  </div>
-                </div>
-                <div className="ce-row">
-                  <div className="ce-row-lhs">
-                    <span className="ce-row-label">Location Name <span className="ce-req">*</span></span>
-                    <span className="ce-row-hint">Town, village or landmark</span>
-                  </div>
-                  <div className="ce-row-rhs">
-                    <input className="ce-input" type="text" value={eventLoc}
-                      onChange={(e) => setEventLoc(e.target.value)} required
-                      placeholder="e.g. KOVILPATTAI New Busstand" />
-                  </div>
-                </div>
-              </div>
-
-              {/* ─ 2. Participation ─ */}
-              <div className="ce-card" id="sec-Participation">
-                <div className="ce-card-head">
-                  <span className="ce-card-icon">🤝</span>
-                  <div>
-                    <div className="ce-card-title">Participation Details</div>
-                    <div className="ce-card-sub">Your role, initiation type, goals and budget</div>
-                  </div>
-                </div>
-
-                <div className="ce-row">
-                  <div className="ce-row-lhs">
-                    <span className="ce-row-label">Your Primary Role</span>
-                    <span className="ce-row-hint">How are you contributing to this event?</span>
-                  </div>
-                  <div className="ce-row-rhs">
-                    <div className="ce-pills">
-                      <input type="radio" id="rv" name="role" value="Volunteer" checked={role==='Volunteer'} onChange={(e)=>setRole(e.target.value)} />
-                      <label className="ce-pill" htmlFor="rv">🙋 Volunteering</label>
-                      <input type="radio" id="rs" name="role" value="Sponsor" checked={role==='Sponsor'} onChange={(e)=>setRole(e.target.value)} />
-                      <label className="ce-pill" htmlFor="rs">💰 Sponsoring</label>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="ce-row">
-                  <div className="ce-row-lhs">
-                    <span className="ce-row-label">Initiation Type</span>
-                    <span className="ce-row-hint">Who is organizing and leading this event?</span>
-                  </div>
-                  <div className="ce-row-rhs">
-                    <div className="ce-pills">
-                      <input type="radio" id="iv" name="initiationType" value="Volunteer-Led" checked={initiationType==='Volunteer-Led'} onChange={(e)=>setInitiationType(e.target.value)} />
-                      <label className="ce-pill" htmlFor="iv">🌱 Volunteer-Led</label>
-                      <input type="radio" id="is" name="initiationType" value="Sponsor-Led" checked={initiationType==='Sponsor-Led'} onChange={(e)=>setInitiationType(e.target.value)} />
-                      <label className="ce-pill" htmlFor="is">🏦 Sponsor-Led</label>
-                    </div>
-                    <div className="ce-hint">
-                      {initiationType==='Volunteer-Led'
-                        ? '💡 You have volunteers but need funding for saplings, land, etc.'
-                        : '💡 You have funding but need people to help with planting.'}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="ce-row">
-                  <div className="ce-row-lhs">
-                    <span className="ce-row-label">Event Goals</span>
-                    <span className="ce-row-hint">Funding target & volunteers required</span>
-                  </div>
-                  <div className="ce-row-rhs">
-                    <div className="ce-split">
-                      <input className="ce-input" type="number" value={fundingGoal} onChange={(e)=>setFundingGoal(e.target.value)} placeholder="₹ Funding goal" />
-                      <input className="ce-input" type="number" value={laborGoal} onChange={(e)=>setLaborGoal(e.target.value)} placeholder="No. of volunteers" />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="ce-row">
-                  <div className="ce-row-lhs">
-                    <span className="ce-row-label">Budget & Tree Count</span>
-                    <span className="ce-row-hint">Sponsorship amount and number of trees</span>
-                  </div>
-                  <div className="ce-row-rhs">
-                    <div className="ce-split">
-                      <input className="ce-input" type="number" value={budget} onChange={(e)=>setBudget(e.target.value)} placeholder="₹ Sponsorship budget" />
-                      <div className="ce-sel-wrap">
-                        <select className="ce-select" value={treeCount} onChange={(e)=>setTreeCount(e.target.value)}>
-                          <option value="10">10 Trees</option>
-                          <option value="100">100 Trees</option>
-                          <option value="200">200 Trees</option>
-                          <option value="500">500 Trees</option>
-                          <option value="Other">Other</option>
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="ce-row">
-                  <div className="ce-row-lhs">
-                    <span className="ce-row-label">Linked Land</span>
-                    <span className="ce-row-hint">Optional — attach a registered plot</span>
-                  </div>
-                  <div className="ce-row-rhs">
-                    <div className="ce-sel-wrap">
-                      <select className="ce-select" value={selectedLandId} onChange={(e)=>setSelectedLandId(e.target.value)}>
-                        <option value="">— No specific land / Will add later —</option>
-                        {lands.map((land)=>(
-                          <option key={getId(land)} value={getId(land)}>
-                            {land.name} – {land.address} ({land.area_sqft} sq.ft)
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* ─ 3. Land Management ─ */}
-              <div className="ce-card" id="sec-LandManagement">
-                <div className="ce-card-head">
-                  <span className="ce-card-icon">🌍</span>
-                  <div>
-                    <div className="ce-card-title">Land Management</div>
-                    <div className="ce-card-sub">Plot allocation status and GPS coordinates</div>
-                  </div>
-                </div>
-
-                <div className="ce-row">
-                  <div className="ce-row-lhs">
-                    <span className="ce-row-label">Land Allocated?</span>
-                    <span className="ce-row-hint">Do you have a plot confirmed?</span>
-                  </div>
-                  <div className="ce-row-rhs">
-                    <div className="ce-pills">
-                      <input type="radio" id="ly" name="la" value="YES" checked={landAllocated==='YES'} onChange={()=>setLandAllocated('YES')} />
-                      <label className="ce-pill" htmlFor="ly">✅ Yes, Allocated</label>
-                      <input type="radio" id="ln" name="la" value="NO" checked={landAllocated==='NO'} onChange={()=>setLandAllocated('NO')} />
-                      <label className="ce-pill" htmlFor="ln">🔍 Not Yet</label>
-                    </div>
-                  </div>
-                </div>
-
-                {landAllocated==='YES' && (
-                  <div className="ce-row">
-                    <div className="ce-row-lhs">
-                      <span className="ce-row-label">GPS & Area</span>
-                      <span className="ce-row-hint">Latitude/longitude & plot size in sq. ft.</span>
-                    </div>
-                    <div className="ce-row-rhs">
-                      <div className="ce-split">
-                        <div>
-                          <input className="ce-input" type="text" value={latlong} onChange={(e)=>setLatlong(e.target.value)} placeholder="e.g. 9.1711, 77.8741" />
-                          <button type="button" onClick={getLocation} className="ce-geo">📍 Use My Location</button>
-                        </div>
-                        <input className="ce-input" type="number" value={area} onChange={(e)=>setArea(e.target.value)} placeholder="Area (sq. ft.)" />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {landAllocated==='NO' && (
-                  <div className="ce-row">
-                    <div className="ce-row-lhs">
-                      <span className="ce-row-label">Volunteer Help Needed</span>
-                      <span className="ce-row-hint">What can volunteers assist with?</span>
-                    </div>
-                    <div className="ce-row-rhs">
-                      <div className="ce-checks">
-                        {[
-                          ['🗺️','Help find suitable land'],
-                          ['⛏️','Assist in land preparation (Digging, etc.)'],
-                          ['📋','Help with local permissions'],
-                        ].map(([ico,val])=>(
-                          <label key={val} className="ce-check">
-                            <input type="checkbox" value={val} checked={noLandOptions.includes(val)} onChange={handleNoLandChange} />
-                            <span>{ico}</span> {val}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* ─ 4. Logistics ─ */}
-              <div className="ce-card" id="sec-Logistics">
-                <div className="ce-card-head">
-                  <span className="ce-card-icon">📅</span>
-                  <div>
-                    <div className="ce-card-title">Logistics & Sustainability</div>
-                    <div className="ce-card-sub">Date, tree species, and long-term care plan</div>
-                  </div>
-                </div>
-
-                <div className="ce-row">
-                  <div className="ce-row-lhs">
-                    <span className="ce-row-label">External Sponsorship</span>
-                    <span className="ce-row-hint">Can this event run without sponsors?</span>
-                  </div>
-                  <div className="ce-row-rhs">
-                    <div className="ce-pills">
-                      <input type="radio" id="nsy" name="nso" value="YES" checked={noSponsorOk==='YES'} onChange={(e)=>setNoSponsorOk(e.target.value)} />
-                      <label className="ce-pill" htmlFor="nsy">✅ Yes, Self-Funded</label>
-                      <input type="radio" id="nsn" name="nso" value="NO" checked={noSponsorOk==='NO'} onChange={(e)=>setNoSponsorOk(e.target.value)} />
-                      <label className="ce-pill" htmlFor="nsn">🤲 Need Sponsors</label>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="ce-row">
-                  <div className="ce-row-lhs">
-                    <span className="ce-row-label">Event Date & Time <span className="ce-req">*</span></span>
-                    <span className="ce-row-hint">When will the planting happen?</span>
-                  </div>
-                  <div className="ce-row-rhs">
-                    <input className="ce-input" type="datetime-local" value={eventDateTime} onChange={(e)=>setEventDateTime(e.target.value)} required />
-                  </div>
-                </div>
-
-                <div className="ce-row">
-                  <div className="ce-row-lhs">
-                    <span className="ce-row-label">Tree Species</span>
-                    <span className="ce-row-hint">What species will be planted?</span>
-                  </div>
-                  <div className="ce-row-rhs">
-                    <input className="ce-input" type="text" value={treeSpecies} onChange={(e)=>setTreeSpecies(e.target.value)} placeholder="e.g. Neem, Peepal, Teak, Mango" />
-                  </div>
-                </div>
-
-                <div className="ce-row">
-                  <div className="ce-row-lhs">
-                    <span className="ce-row-label">Maintenance Plan</span>
-                    <span className="ce-row-hint">Who waters and protects the saplings?</span>
-                  </div>
-                  <div className="ce-row-rhs">
-                    <textarea className="ce-textarea" rows="3" value={maintenancePlan} onChange={(e)=>setMaintenancePlan(e.target.value)} placeholder="Describe the watering schedule, who's responsible, and how trees will be protected..." />
-                  </div>
-                </div>
-              </div>
-
-              {/* ─ 5. Contact ─ */}
-              <div className="ce-card" id="sec-Contact">
-                <div className="ce-card-head">
-                  <span className="ce-card-icon">👤</span>
-                  <div>
-                    <div className="ce-card-title">Contact Person Details</div>
-                    <div className="ce-card-sub">Who should volunteers and sponsors reach out to?</div>
-                  </div>
-                </div>
-
-                <div className="ce-row">
-                  <div className="ce-row-lhs">
-                    <span className="ce-row-label">Full Name <span className="ce-req">*</span></span>
-                    <span className="ce-row-hint">Event organiser's full name</span>
-                  </div>
-                  <div className="ce-row-rhs">
-                    <input className="ce-input" type="text" value={contactName} onChange={(e)=>setContactName(e.target.value)} placeholder="Your full name" required />
-                  </div>
-                </div>
-
-                <div className="ce-row">
-                  <div className="ce-row-lhs">
-                    <span className="ce-row-label">Phone & Email <span className="ce-req">*</span></span>
-                    <span className="ce-row-hint">Primary contact details</span>
-                  </div>
-                  <div className="ce-row-rhs">
-                    <div className="ce-split">
-                      <input className="ce-input" type="text" value={contactPhone} onChange={(e)=>setContactPhone(e.target.value)} placeholder="+91 XXXXX XXXXX" required />
-                      <input className="ce-input" type="email" value={contactEmail} onChange={(e)=>setContactEmail(e.target.value)} placeholder="you@example.com" required />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* ─ Sticky Action Bar ─ */}
-              <div className="ce-actionbar">
-                <label className="ce-terms-wrap">
-                  <input type="checkbox" checked={agreeTerms} onChange={(e)=>setAgreeTerms(e.target.checked)} required />
-                  <span className="ce-terms-text">
-                    I agree to the <strong>Terms & Conditions</strong> and confirm this event complies with all local environmental regulations and guidelines.
-                  </span>
-                </label>
-                <button type="submit" className="ce-submit" disabled={loading}>
-                  {loading ? <><div className="ce-spin" /> Creating Event…</> : <>🌿 Create Event &amp; Notify Volunteers</>}
-                </button>
-              </div>
-
-            </main>
-          </div>
-        </form>
+          </form>
+        </section>
       </div>
-    </>
+    </div>
   );
 };
 

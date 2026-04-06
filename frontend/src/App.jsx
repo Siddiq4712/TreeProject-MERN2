@@ -1,6 +1,9 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, AuthContext } from './context/AuthContext';
+import { AuthProvider } from './context/AuthContext';
+import { AuthContext } from './context/auth-context';
+import { ToastProvider } from './context/ToastProvider';
 import { useContext } from 'react';
+import './App.css';
 
 // Pages
 import Login from './pages/Login';
@@ -15,6 +18,8 @@ import MyLand from './pages/MyLand';
 import AddLand from './pages/AddLand';
 import LandDetail from './pages/LandDetail';
 import AddHistoricalTree from './pages/AddHistoricalTree';
+import AdminDashboard from './pages/AdminDashboard';
+import Profile from './pages/Profile';
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -38,6 +43,28 @@ const ProtectedRoute = ({ children }) => {
     return <Navigate to="/login" replace />;
   }
   
+  return children;
+};
+
+const AdminRoute = ({ children }) => {
+  const { user, loading } = useContext(AuthContext);
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontFamily: "'Segoe UI', sans-serif" }}>
+        <p><i className="fas fa-spinner fa-spin"></i> Loading...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (user.role !== 'Admin') {
+    return <Navigate to="/dashboard" replace />;
+  }
+
   return children;
 };
 
@@ -68,9 +95,10 @@ const PublicRoute = ({ children }) => {
 
 function App() {
   return (
-    <AuthProvider>
-      <Router>
-        <Routes>
+    <ToastProvider>
+      <AuthProvider>
+        <Router>
+          <Routes>
           {/* Public Routes */}
           <Route path="/login" element={
             <PublicRoute>
@@ -134,13 +162,24 @@ function App() {
               <AddHistoricalTree />
             </ProtectedRoute>
           } />
+          <Route path="/profile" element={
+            <ProtectedRoute>
+              <Profile />
+            </ProtectedRoute>
+          } />
+          <Route path="/admin" element={
+            <AdminRoute>
+              <AdminDashboard />
+            </AdminRoute>
+          } />
 
           {/* Default redirect */}
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
-      </Router>
-    </AuthProvider>
+          </Routes>
+        </Router>
+      </AuthProvider>
+    </ToastProvider>
   );
 }
 

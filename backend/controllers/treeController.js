@@ -112,7 +112,7 @@ export const updateHealth = async (req, res) => {
       growth_status,
       survival_status,
       height_cm,
-    });
+    }, req.user.id);
 
     res.json({
       message: 'Tree health updated',

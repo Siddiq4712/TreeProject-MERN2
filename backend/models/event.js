@@ -16,6 +16,10 @@ const eventSchema = new mongoose.Schema(
     description: {
       type: String,
     },
+    location_code: {
+      type: String,
+      maxlength: 30,
+    },
     date_time: {
       type: Date,
       required: true,
@@ -100,6 +104,67 @@ const eventSchema = new mongoose.Schema(
     banner_url: {
       type: String,
       maxlength: 500,
+    },
+    land_allocation_status: {
+      type: String,
+      enum: ['ALLOCATED', 'NEEDED'],
+      default: 'NEEDED',
+    },
+    proposed_land: {
+      latitude: Number,
+      longitude: Number,
+      area_sqft: Number,
+      address: String,
+    },
+    land_support_options: {
+      type: [String],
+      default: [],
+    },
+    land_support_other: {
+      type: String,
+      maxlength: 255,
+    },
+    can_run_without_sponsorship: {
+      type: Boolean,
+      default: false,
+    },
+    expected_volunteers: {
+      type: Number,
+      default: 0,
+    },
+    maintenance_plan: {
+      type: String,
+      maxlength: 1000,
+    },
+    community_engagement_strategy: {
+      type: String,
+      maxlength: 1000,
+    },
+    media_coverage: {
+      type: Boolean,
+      default: false,
+    },
+    social_media_handles: {
+      type: [String],
+      default: [],
+    },
+    contact_person: {
+      name: String,
+      phone: String,
+      email: String,
+    },
+    climate_zone: {
+      type: String,
+      maxlength: 100,
+    },
+    suggested_tree_types: {
+      type: [String],
+      default: [],
+    },
+    procurement_status: {
+      type: String,
+      enum: ['PLANNED', 'IN_PROGRESS', 'READY'],
+      default: 'PLANNED',
     },
   },
   {

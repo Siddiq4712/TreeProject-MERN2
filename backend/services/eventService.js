@@ -1,9 +1,101 @@
 import db from '../models/index.js';
 import mongoose from 'mongoose';
+import { generatePublicId } from '../utils/idGenerator.js';
+
+const logPlantTracking = async (tree, actorId, actionType, title, notes = '', metadata = {}) =>
+  db.PlantTracking.create({
+    tree_id: tree._id,
+    event_id: tree.event_id || null,
+    land_id: tree.land_id || null,
+    actor_id: actorId || null,
+    action_type: actionType,
+    title,
+    notes,
+    metadata,
+  });
+
+const createEventTrees = async (event, creatorId) => {
+  let land = null;
+  if (event.land_id) {
+    land = await db.Land.findById(event.land_id).lean();
+  }
+
+  const trees = await db.Tree.insertMany(
+    Array.from({ length: event.tree_count }, (_, index) => ({
+      tree_id: generatePublicId(`TREE${index + 1}`),
+      species: event.tree_species || 'Mixed',
+      event_id: event._id,
+      land_id: event.land_id || null,
+      latitude: land?.latitude || event.proposed_land?.latitude || null,
+      longitude: land?.longitude || event.proposed_land?.longitude || null,
+      spot_label: `Spot ${index + 1}`,
+      planted_by: creatorId,
+      status: 'Planned',
+      growth_status: 'Seedling',
+      survival_status: 'Healthy',
+      maintenance_due_at: event.date_time ? new Date(new Date(event.date_time).getTime() + 7 * 24 * 60 * 60 * 1000) : null,
+      notes: `Planned for event ${event.event_id}`,
+    }))
+  );
+
+  await Promise.all(
+    trees.map((tree, index) =>
+      logPlantTracking(
+        tree,
+        creatorId,
+        'PLANNED',
+        `Tree ${index + 1} planned for ${event.event_id}`,
+        'Created automatically when the event was scheduled.',
+        {
+          event_id: event.event_id,
+          species: tree.species,
+        }
+      )
+    )
+  );
+
+  return trees;
+};
+
+const suggestTreeTypes = ({ tree_species, climate_zone, soil_type, water_availability }) => {
+  if (tree_species) {
+    return tree_species
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  const suggestions = new Set(['Neem', 'Pongamia']);
+
+  if (soil_type === 'Clay' || soil_type === 'Loamy') {
+    suggestions.add('Peepal');
+    suggestions.add('Banyan');
+  }
+
+  if (soil_type === 'Sandy') {
+    suggestions.add('Casuarina');
+    suggestions.add('Palm');
+  }
+
+  if (water_availability) {
+    suggestions.add('Jamun');
+    suggestions.add('Mango');
+  }
+
+  if (climate_zone?.toLowerCase().includes('dry')) {
+    suggestions.add('Tamarind');
+  }
+
+  return Array.from(suggestions);
+};
 
 // Create Event
 export const createEvent = async (eventData, creatorId) => {
-  const treeCount = eventData.tree_count;
+  const treeCount = Number(eventData.tree_count);
+
+  if (!eventData.location || !eventData.event_id || !eventData.date_time || !treeCount) {
+    throw { status: 400, message: 'Event ID, location, date and tree count are required' };
+  }
 
   const calculatedFundingGoal =
     treeCount * 20 + // Saplings
@@ -18,6 +110,14 @@ export const createEvent = async (eventData, creatorId) => {
     joinDeadline = new Date(eventDate.getTime() - 3 * 24 * 60 * 60 * 1000);
   }
 
+  const selectedLand = eventData.land_id ? await db.Land.findById(eventData.land_id).lean() : null;
+  const treeSuggestions = suggestTreeTypes({
+    tree_species: eventData.tree_species,
+    climate_zone: eventData.climate_zone,
+    soil_type: selectedLand?.soil_type,
+    water_availability: selectedLand?.water_availability,
+  });
+
   const newEvent = await db.Event.create({
     event_id: eventData.event_id,
     location: eventData.location,
@@ -30,6 +130,7 @@ export const createEvent = async (eventData, creatorId) => {
     role: eventData.role,
     creator_id: creatorId,
     land_id: eventData.land_id || null,
+    location_code: eventData.location_code || 'TN 69',
     initiation_type: eventData.initiation_type || 'Volunteer-Led',
     approval_mode: eventData.approval_mode || 'Manual',
     funding_goal: eventData.funding_goal || calculatedFundingGoal,
@@ -40,6 +141,20 @@ export const createEvent = async (eventData, creatorId) => {
     is_ready_to_start: false,
     is_active: true,
     banner_url: eventData.banner_url || null,
+    land_allocation_status: eventData.land_allocation_status || (eventData.land_id ? 'ALLOCATED' : 'NEEDED'),
+    proposed_land: eventData.proposed_land || null,
+    land_support_options: eventData.land_support_options || [],
+    land_support_other: eventData.land_support_other || null,
+    can_run_without_sponsorship: !!eventData.can_run_without_sponsorship,
+    expected_volunteers: Number(eventData.expected_volunteers || 0),
+    maintenance_plan: eventData.maintenance_plan || null,
+    community_engagement_strategy: eventData.community_engagement_strategy || null,
+    media_coverage: !!eventData.media_coverage,
+    social_media_handles: eventData.social_media_handles || [],
+    contact_person: eventData.contact_person || null,
+    climate_zone: eventData.climate_zone || null,
+    suggested_tree_types: treeSuggestions,
+    procurement_status: eventData.procurement_status || 'PLANNED',
   });
 
   // Create resource requirements
@@ -67,6 +182,37 @@ export const createEvent = async (eventData, creatorId) => {
     });
   }
 
+  await createEventTrees(newEvent, creatorId);
+
+  if (newEvent.land_id) {
+    await db.Land.findByIdAndUpdate(newEvent.land_id, {
+      $inc: { total_events_hosted: 1 },
+      $set: { status: 'Reserved' },
+    });
+
+    await db.LandActivity.create({
+      land_id: newEvent.land_id,
+      user_id: creatorId,
+      activity_type: 'EventCreated',
+      description: `Event ${newEvent.event_id} scheduled on this land`,
+      metadata: {
+        event_id: newEvent._id,
+        tree_count: newEvent.tree_count,
+      },
+    });
+  }
+
+  if (!newEvent.land_id && eventData.proposed_land?.latitude && eventData.proposed_land?.longitude) {
+    const volunteerLandResource = await db.EventResource.findOne({
+      event_id: newEvent._id,
+      resource_type: 'Land',
+    });
+    if (volunteerLandResource) {
+      volunteerLandResource.notes = 'Volunteers can suggest land for this event.';
+      await volunteerLandResource.save();
+    }
+  }
+
   return newEvent;
 };
 
@@ -76,7 +222,7 @@ export const getAllEvents = async (userId) => {
     creator_id: { $ne: userId },
     is_active: true,
   })
-    .populate('creator_id', 'name role')
+    .populate('creator_id', 'name role account_type organization_name')
     .populate('land_id', 'name address')
     .sort({ created_at: -1 })
     .lean();
@@ -136,7 +282,7 @@ export const getMyCreatedEvents = async (userId) => {
 // Get Event By ID
 export const getEventById = async (eventId) => {
   const event = await db.Event.findById(eventId)
-    .populate('creator_id', 'name role')
+    .populate('creator_id', 'name role account_type organization_name')
     .populate('land_id')
     .lean();
 
@@ -146,6 +292,7 @@ export const getEventById = async (eventId) => {
   event.land = event.land_id;
   event.resources = await db.EventResource.find({ event_id: event._id }).lean();
   event.trees = await db.Tree.find({ event_id: event._id }).lean();
+  event.tracked_tree_count = event.trees.length;
   event.eventVolunteers = await db.EventVolunteer.find({ event_id: event._id })
     .populate('user_id', 'name role email')
     .lean();
@@ -161,7 +308,7 @@ export const getEventById = async (eventId) => {
 // Get Event Detail with Role Context
 export const getEventDetail = async (eventId, viewerId) => {
   const event = await db.Event.findById(eventId)
-    .populate('creator_id', 'name role email')
+    .populate('creator_id', 'name role email account_type organization_name')
     .populate('land_id')
     .lean();
 
@@ -173,6 +320,7 @@ export const getEventDetail = async (eventId, viewerId) => {
   event.land = event.land_id;
   event.resources = await db.EventResource.find({ event_id: event._id }).lean();
   event.trees = await db.Tree.find({ event_id: event._id }).lean();
+  event.tracked_tree_count = event.trees.length;
   event.eventVolunteers = await db.EventVolunteer.find({ event_id: event._id })
     .populate('user_id', 'name role karma_points')
     .lean();
@@ -203,6 +351,9 @@ export const getEventDetail = async (eventId, viewerId) => {
   event.accepted_volunteers = acceptedVolunteers;
   event.accepted_sponsors = acceptedSponsors;
   event.pending_requests_count = event.eventVolunteers?.filter((v) => v.request_status === 'PENDING').length || 0;
+  event.organization_ready =
+    event.creator?.account_type === 'Organization' || event.creator?.role === 'Organizer';
+  event.volunteer_hours = event.eventVolunteers?.reduce((sum, item) => sum + Number(item.volunteer_hours || 0), 0) || 0;
 
   // Calculate resource progress
   const resources = event.resources || [];
@@ -349,6 +500,7 @@ export const sendJoinRequest = async (eventId, userId, joinData) => {
     procurement_type,
     contribution_amount,
     contribution_quantity,
+    volunteer_hours,
     social_media_link,
   } = joinData;
 
@@ -377,12 +529,21 @@ export const sendJoinRequest = async (eventId, userId, joinData) => {
     procurement_type: procurement_type || null,
     contribution_amount: contribution_amount || 0,
     contribution_quantity: contribution_quantity || 0,
+    volunteer_hours: Number(volunteer_hours || 0),
     shared_on_social: !!social_media_link,
     social_media_link: social_media_link || null,
     karma_earned: karmaEarned,
     request_status: initialStatus,
     requested_at: new Date(),
     responded_at: initialStatus === 'ACCEPTED' ? new Date() : null,
+    receipt_id:
+      contribution_type === 'Capital' && Number(contribution_amount || 0) > 0
+        ? generatePublicId('RECEIPT')
+        : null,
+    receipt_generated_at:
+      contribution_type === 'Capital' && Number(contribution_amount || 0) > 0
+        ? new Date()
+        : null,
   });
 
   // If Auto-Accept, apply contribution
@@ -447,6 +608,16 @@ export const acceptRequest = async (requestId, creatorId) => {
       if (tree) {
         tree.sponsor_id = volunteer.user_id;
         await tree.save();
+        await logPlantTracking(
+          tree,
+          volunteer.user_id,
+          'SPONSORED',
+          'Tree sponsorship confirmed',
+          'This tree now has a sponsor assigned from the accepted event request.',
+          {
+            sponsor_request_id: volunteer._id,
+          }
+        );
       }
     }
   }

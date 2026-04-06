@@ -1,14 +1,21 @@
 import db from '../models/index.js';
+import { generatePublicId } from '../utils/idGenerator.js';
 
-// Generate unique tree ID
-const generateTreeId = () => {
-  const random = Math.floor(100000 + Math.random() * 900000);
-  return `TREE-${random}`;
-};
+const logTracking = async (tree, actorId, actionType, title, notes = '', metadata = {}) =>
+  db.PlantTracking.create({
+    tree_id: tree._id,
+    event_id: tree.event_id || null,
+    land_id: tree.land_id || null,
+    actor_id: actorId || null,
+    action_type: actionType,
+    title,
+    notes,
+    metadata,
+  });
 
 export const createTree = async (treeData, userId) => {
   const newTree = await db.Tree.create({
-    tree_id: generateTreeId(),
+    tree_id: generatePublicId('TREE'),
     species: treeData.species,
     event_id: treeData.event_id || null,
     land_id: treeData.land_id || null,
@@ -20,13 +27,22 @@ export const createTree = async (treeData, userId) => {
     is_historical: false,
   });
 
+  await logTracking(
+    newTree,
+    userId,
+    'PLANNED',
+    'Tree added manually',
+    'Tree record created from the tree management flow.',
+    { species: newTree.species }
+  );
+
   return newTree;
 };
 
 // Add Historical Tree
 export const createHistoricalTree = async (treeData, userId) => {
   const newTree = await db.Tree.create({
-    tree_id: generateTreeId(),
+    tree_id: generatePublicId('TREE'),
     species: treeData.species,
     land_id: treeData.land_id || null,
     sponsor_id: treeData.sponsor_id || userId,
@@ -42,6 +58,19 @@ export const createHistoricalTree = async (treeData, userId) => {
     notes: treeData.notes || null,
     has_tree_guard: treeData.has_tree_guard || false,
   });
+
+  await logTracking(
+    newTree,
+    userId,
+    'HISTORICAL_IMPORT',
+    'Historical tree imported',
+    treeData.notes || 'Imported as an existing planted tree.',
+    {
+      growth_status: newTree.growth_status,
+      survival_status: newTree.survival_status,
+      height_cm: newTree.height_cm,
+    }
+  );
 
   return newTree;
 };
@@ -142,6 +171,11 @@ export const getTreeById = async (treeId) => {
   tree.land = tree.land_id;
   tree.tasks = await db.TreeTask.find({ tree_id: tree._id }).populate('volunteer_id', 'name').lean();
   tree.tasks = tree.tasks.map((t) => ({ ...t, volunteer: t.volunteer_id }));
+  tree.tracking = await db.PlantTracking.find({ tree_id: tree._id })
+    .populate('actor_id', 'name role account_type organization_name')
+    .sort({ tracked_at: -1, created_at: -1 })
+    .lean();
+  tree.tracking = tree.tracking.map((entry) => ({ ...entry, actor: entry.actor_id }));
 
   return tree;
 };
@@ -153,6 +187,8 @@ export const addTreeTask = async (treeId, taskType, volunteerId, notes) => {
     throw { status: 404, message: 'Tree not found' };
   }
 
+  const wasUnplanted = !tree.planted_date;
+
   // Create task
   const task = await db.TreeTask.create({
     tree_id: treeId,
@@ -163,26 +199,38 @@ export const addTreeTask = async (treeId, taskType, volunteerId, notes) => {
 
   // Update tree status based on task
   let newStatus = tree.status;
+  let actionType = null;
+  let actionTitle = '';
 
   if (taskType === 'Digging') {
     newStatus = 'Hole-Dug';
+    actionType = 'DIGGING';
+    actionTitle = 'Digging completed';
   }
   if (taskType === 'Planting') {
     newStatus = 'Planted';
     tree.planted_by = volunteerId;
     tree.planted_date = new Date();
+    actionType = 'PLANTING';
+    actionTitle = 'Tree planted';
   }
   if (taskType === 'Watering') {
     newStatus = 'Watered';
     tree.last_watered = new Date();
+    actionType = 'WATERING';
+    actionTitle = 'Tree watered';
   }
   if (taskType === 'Fertilizing') {
     newStatus = 'Fertilized';
     tree.last_fertilized = new Date();
+    actionType = 'FERTILIZING';
+    actionTitle = 'Fertilizer applied';
   }
   if (taskType === 'TreeGuard') {
     newStatus = 'Guarded';
     tree.has_tree_guard = true;
+    actionType = 'GUARDING';
+    actionTitle = 'Tree guard installed';
   }
 
   // Check if all 5 steps done
@@ -202,10 +250,35 @@ export const addTreeTask = async (treeId, taskType, volunteerId, notes) => {
   tree.status = newStatus;
   await tree.save();
 
+  if (actionType) {
+    await logTracking(tree, volunteerId, actionType, actionTitle, notes || '', {
+      task_type: taskType,
+      resulting_status: newStatus,
+    });
+  }
+
+  if (taskType === 'Planting' && tree.land_id && wasUnplanted) {
+    await db.Land.findByIdAndUpdate(tree.land_id, {
+      $inc: { total_trees_planted: 1 },
+      $set: { status: 'Active' },
+    });
+
+    await db.LandActivity.create({
+      land_id: tree.land_id,
+      user_id: volunteerId,
+      activity_type: 'PlantingCompleted',
+      description: `${tree.species} planted`,
+      metadata: {
+        tree_id: tree._id,
+        event_id: tree.event_id,
+      },
+    });
+  }
+
   return task;
 };
 
-export const updateTreeHealth = async (treeId, healthData) => {
+export const updateTreeHealth = async (treeId, healthData, actorId = null) => {
   const tree = await db.Tree.findById(treeId);
   if (!tree) {
     throw { status: 404, message: 'Tree not found' };
@@ -213,8 +286,20 @@ export const updateTreeHealth = async (treeId, healthData) => {
 
   if (healthData.growth_status) tree.growth_status = healthData.growth_status;
   if (healthData.survival_status) tree.survival_status = healthData.survival_status;
-  if (healthData.height_cm) tree.height_cm = healthData.height_cm;
+  if (healthData.height_cm !== undefined) tree.height_cm = healthData.height_cm;
 
   await tree.save();
+  await logTracking(
+    tree,
+    actorId,
+    'HEALTH_UPDATE',
+    'Health status updated',
+    'Growth or survival details were updated for this tree.',
+    {
+      growth_status: tree.growth_status,
+      survival_status: tree.survival_status,
+      height_cm: tree.height_cm,
+    }
+  );
   return tree;
 };

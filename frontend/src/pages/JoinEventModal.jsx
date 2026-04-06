@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import api from '../services/api';
 
 const JoinEventModal = ({ event, onClose, onSuccess }) => {
@@ -165,9 +165,6 @@ const JoinEventModal = ({ event, onClose, onSuccess }) => {
     modal: {
       background: 'white',
       borderRadius: '20px',
-      width: '95%',
-      maxWidth: '650px',
-      maxHeight: '90vh',
       overflow: 'auto',
       boxShadow: '0 20px 50px rgba(0,0,0,0.3)',
     },
@@ -195,7 +192,6 @@ const JoinEventModal = ({ event, onClose, onSuccess }) => {
       padding: '25px',
     },
     toggleContainer: {
-      display: 'flex',
       background: '#f0f0f0',
       borderRadius: '15px',
       padding: '6px',
@@ -244,7 +240,6 @@ const JoinEventModal = ({ event, onClose, onSuccess }) => {
     },
     taskGrid: {
       display: 'grid',
-      gridTemplateColumns: 'repeat(2, 1fr)',
       gap: '10px',
     },
     taskCard: {
@@ -305,7 +300,6 @@ const JoinEventModal = ({ event, onClose, onSuccess }) => {
       transition: '0.3s',
     },
     procurementToggle: {
-      display: 'flex',
       gap: '10px',
       marginTop: '15px',
     },
@@ -344,14 +338,10 @@ const JoinEventModal = ({ event, onClose, onSuccess }) => {
       background: 'linear-gradient(135deg, #fff8e6, #fef3c7)',
       padding: '15px 20px',
       borderRadius: '12px',
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
       marginBottom: '20px',
       border: '1px solid #fcd34d',
     },
     btnRow: {
-      display: 'flex',
       gap: '12px',
     },
     btnCancel: {
@@ -410,7 +400,7 @@ const JoinEventModal = ({ event, onClose, onSuccess }) => {
 
   return (
     <div style={styles.overlay} onClick={onClose}>
-      <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+      <div className="join-modal" style={styles.modal} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div style={styles.header}>
           <button style={styles.closeBtn} onClick={onClose}>✕</button>
@@ -429,7 +419,7 @@ const JoinEventModal = ({ event, onClose, onSuccess }) => {
             <div style={styles.sectionTitle}>
               <span>Step 1:</span> How will you contribute?
             </div>
-            <div style={styles.toggleContainer}>
+            <div className="join-toggle" style={styles.toggleContainer}>
               <button
                 style={{
                   ...styles.toggleBtn,
@@ -462,7 +452,7 @@ const JoinEventModal = ({ event, onClose, onSuccess }) => {
                 <p style={styles.sectionSubtitle}>
                   These tasks directly contribute to event progress
                 </p>
-                <div style={styles.taskGrid}>
+                <div className="join-task-grid" style={styles.taskGrid}>
                   {hardTasks.map((task) => (
                     <div
                       key={task.id}
@@ -496,7 +486,7 @@ const JoinEventModal = ({ event, onClose, onSuccess }) => {
                 <p style={styles.sectionSubtitle}>
                   These earn Karma but don't block event progress
                 </p>
-                <div style={styles.taskGrid}>
+                <div className="join-task-grid" style={styles.taskGrid}>
                   {softTasks.map((task) => (
                     <div
                       key={task.id}
@@ -622,7 +612,7 @@ const JoinEventModal = ({ event, onClose, onSuccess }) => {
                 <div style={styles.sectionTitle}>
                   <i className="fas fa-exchange-alt"></i> How will you contribute?
                 </div>
-                <div style={styles.procurementToggle}>
+                <div className="join-procurement-toggle" style={styles.procurementToggle}>
                   <button
                     style={{
                       ...styles.procurementBtn,
@@ -691,7 +681,7 @@ const JoinEventModal = ({ event, onClose, onSuccess }) => {
           </div>
 
           {/* Karma Preview */}
-          <div style={styles.karmaPreview}>
+          <div className="join-karma-preview" style={styles.karmaPreview}>
             <div>
               <p style={{ margin: 0, fontSize: '13px', color: '#92400e' }}>Estimated Karma Reward</p>
               <p style={{ margin: '5px 0 0', fontSize: '11px', color: '#b45309' }}>
@@ -704,7 +694,7 @@ const JoinEventModal = ({ event, onClose, onSuccess }) => {
           </div>
 
           {/* Buttons */}
-          <div style={styles.btnRow}>
+          <div className="join-footer-actions" style={styles.btnRow}>
             <button style={styles.btnCancel} onClick={onClose}>
               Cancel
             </button>

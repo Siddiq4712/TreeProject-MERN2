@@ -1,14 +1,12 @@
-import { useState, useEffect, useContext } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import JoinEventModal from './JoinEventModal';
 import api from '../services/api';
-import { AuthContext } from '../context/AuthContext';
 
 const EventDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user } = useContext(AuthContext);
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showJoinModal, setShowJoinModal] = useState(false);
@@ -18,11 +16,7 @@ const EventDetail = () => {
   // Helper to get ID (handles both MongoDB _id and SQL id)
   const getId = (item) => item?._id || item?.id;
 
-  useEffect(() => {
-    fetchEventDetail();
-  }, [id]);
-
-  const fetchEventDetail = async () => {
+  const fetchEventDetail = useCallback(async () => {
     try {
       const res = await api.get(`/events/${id}/detail`);
       setEvent(res.data);
@@ -33,7 +27,11 @@ const EventDetail = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id, navigate]);
+
+  useEffect(() => {
+    fetchEventDetail();
+  }, [fetchEventDetail]);
 
   const fetchRequests = async () => {
     try {
@@ -118,14 +116,11 @@ const EventDetail = () => {
 
   const styles = {
     body: {
-      display: 'flex',
       backgroundColor: '#f4f7f6',
       minHeight: '100vh',
       fontFamily: "'Segoe UI', sans-serif",
     },
     mainContent: {
-      marginLeft: '260px',
-      width: 'calc(100% - 260px)',
       padding: '30px',
     },
     backBtn: {
@@ -168,7 +163,6 @@ const EventDetail = () => {
     },
     grid: {
       display: 'grid',
-      gridTemplateColumns: '2fr 1fr',
       gap: '25px',
     },
     card: {
@@ -266,7 +260,6 @@ const EventDetail = () => {
       fontSize: '14px',
     },
     actionBtns: {
-      display: 'flex',
       gap: '12px',
       marginTop: '20px',
     },
@@ -334,9 +327,9 @@ const EventDetail = () => {
 
   if (loading) {
     return (
-      <div style={styles.body}>
+      <div className="app-shell" style={styles.body}>
         <Sidebar />
-        <div style={styles.mainContent}>
+        <div className="app-main" style={styles.mainContent}>
           <p style={{ textAlign: 'center', padding: '50px' }}>
             <i className="fas fa-spinner fa-spin"></i> Loading event...
           </p>
@@ -354,10 +347,10 @@ const EventDetail = () => {
   const fundingPercent = event.funding_goal > 0 ? Math.round((event.funding_fulfilled / event.funding_goal) * 100) : 0;
 
   return (
-    <div style={styles.body}>
+    <div className="app-shell" style={styles.body}>
       <Sidebar />
 
-      <div style={styles.mainContent}>
+      <div className="app-main" style={styles.mainContent}>
         {/* Back Button */}
         <button style={styles.backBtn} onClick={() => navigate(-1)}>
           <i className="fas fa-arrow-left"></i> Back
@@ -433,7 +426,7 @@ const EventDetail = () => {
           </div>
         )}
 
-        <div style={styles.grid}>
+        <div className="detail-grid" style={styles.grid}>
           {/* Left Column */}
           <div>
             {/* Event Info Card */}
@@ -444,11 +437,19 @@ const EventDetail = () => {
 
               <div style={styles.infoRow}>
                 <span>Organizer</span>
-                <strong>{event.creator?.name}</strong>
+                <strong>{event.creator?.organization_name || event.creator?.name}</strong>
+              </div>
+              <div style={styles.infoRow}>
+                <span>Organizer Type</span>
+                <strong>{event.creator?.account_type || 'Individual'}</strong>
               </div>
               <div style={styles.infoRow}>
                 <span>Event Date</span>
                 <strong>{formatDate(event.date_time)}</strong>
+              </div>
+              <div style={styles.infoRow}>
+                <span>Tracked Trees</span>
+                <strong>{event.tracked_tree_count || event.trees?.length || 0}</strong>
               </div>
               <div style={styles.infoRow}>
                 <span>Type</span>
@@ -618,7 +619,7 @@ const EventDetail = () => {
               {event.is_creator ? (
                 <>
                   {/* Creator Actions */}
-                  <div style={styles.actionBtns}>
+                  <div className="detail-action-row" style={styles.actionBtns}>
                     <button
                       style={{ ...styles.actionBtn, background: '#2d6a4f', color: 'white' }}
                       onClick={() => {
@@ -643,7 +644,7 @@ const EventDetail = () => {
                     </button>
                   </div>
 
-                  <div style={{ ...styles.actionBtns, marginTop: '10px' }}>
+                  <div className="detail-action-row" style={{ ...styles.actionBtns, marginTop: '10px' }}>
                     <button
                       style={{ ...styles.actionBtn, background: '#3b82f6', color: 'white' }}
                       onClick={handleAdvancePhase}
@@ -653,7 +654,7 @@ const EventDetail = () => {
                     </button>
                   </div>
 
-                  <div style={{ ...styles.actionBtns, marginTop: '10px' }}>
+                  <div className="detail-action-row" style={{ ...styles.actionBtns, marginTop: '10px' }}>
                     <button
                       style={{ ...styles.actionBtn, background: '#f8f9fa', color: '#1b4332', border: '1px solid #ddd' }}
                       onClick={() => navigate(`/edit-event/${id}`)}

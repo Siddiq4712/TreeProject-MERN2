@@ -4,7 +4,10 @@ export const create = async (req, res) => {
   const {
     event_id,
     location,
+    location_code,
+    description,
     date_time,
+    join_deadline,
     tree_count,
     tree_species,
     budget,
@@ -14,6 +17,20 @@ export const create = async (req, res) => {
     approval_mode,
     funding_goal,
     labor_goal,
+    banner_url,
+    land_allocation_status,
+    proposed_land,
+    land_support_options,
+    land_support_other,
+    can_run_without_sponsorship,
+    expected_volunteers,
+    maintenance_plan,
+    community_engagement_strategy,
+    media_coverage,
+    social_media_handles,
+    contact_person,
+    climate_zone,
+    procurement_status,
   } = req.body;
 
   try {
@@ -21,7 +38,10 @@ export const create = async (req, res) => {
       {
         event_id,
         location,
+        location_code,
+        description,
         date_time,
+        join_deadline,
         tree_count,
         tree_species,
         budget,
@@ -31,6 +51,20 @@ export const create = async (req, res) => {
         approval_mode,
         funding_goal,
         labor_goal,
+        banner_url,
+        land_allocation_status,
+        proposed_land,
+        land_support_options,
+        land_support_other,
+        can_run_without_sponsorship,
+        expected_volunteers,
+        maintenance_plan,
+        community_engagement_strategy,
+        media_coverage,
+        social_media_handles,
+        contact_person,
+        climate_zone,
+        procurement_status,
       },
       req.user.id
     );
@@ -101,6 +135,7 @@ export const join = async (req, res) => {
     procurement_type,
     contribution_amount,
     contribution_quantity,
+    volunteer_hours,
     social_media_link,
   } = req.body;
 
@@ -118,6 +153,7 @@ export const join = async (req, res) => {
       procurement_type,
       contribution_amount,
       contribution_quantity,
+      volunteer_hours,
       social_media_link,
     });
 

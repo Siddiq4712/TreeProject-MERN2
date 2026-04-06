@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import db from './models/index.js';
 import routes from './routes/index.js';
+import { ensureAdminAccount } from './services/authService.js';
 
 dotenv.config();
 
@@ -20,6 +21,7 @@ app.use('/api', routes);
 (async () => {
   try {
     await db.connectDB();
+    await ensureAdminAccount();
     
     app.listen(PORT, () => {
       console.log(`🚀 Server running on http://localhost:${PORT}`);

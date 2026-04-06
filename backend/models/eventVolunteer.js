@@ -51,6 +51,10 @@ const eventVolunteerSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    volunteer_hours: {
+      type: Number,
+      default: 0,
+    },
     shared_on_social: {
       type: Boolean,
       default: false,
@@ -77,6 +81,13 @@ const eventVolunteerSchema = new mongoose.Schema(
       default: Date.now,
     },
     responded_at: {
+      type: Date,
+    },
+    receipt_id: {
+      type: String,
+      maxlength: 50,
+    },
+    receipt_generated_at: {
       type: Date,
     },
   },

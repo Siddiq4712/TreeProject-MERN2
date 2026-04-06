@@ -1,9 +1,24 @@
-import { useState } from 'react';
+import { useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
+import { ToastContext } from '../context/toast-context';
+import { useResponsive } from '../hooks/useResponsive';
+
+const fieldStyle = {
+  width: '100%',
+  padding: '14px 16px',
+  borderRadius: '16px',
+  border: '1px solid #d4e9db',
+  background: '#fbfffc',
+  fontSize: '15px',
+  outline: 'none',
+  boxSizing: 'border-box',
+};
 
 const AddLand = () => {
   const navigate = useNavigate();
+  const { showToast } = useContext(ToastContext);
+  const { isMobile } = useResponsive();
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [latitude, setLatitude] = useState('');
@@ -23,11 +38,15 @@ const AddLand = () => {
         (position) => {
           setLatitude(position.coords.latitude.toFixed(6));
           setLongitude(position.coords.longitude.toFixed(6));
+          showToast('Current location captured.', 'success');
         },
-        () => alert('Unable to retrieve location.')
+        (err) => {
+          console.error('AddLand geolocation failed:', err);
+          showToast('Unable to retrieve current location.', 'error');
+        }
       );
     } else {
-      alert('Geolocation not supported.');
+      showToast('Geolocation is not supported in this browser.', 'error');
     }
   };
 
@@ -37,7 +56,9 @@ const AddLand = () => {
     setLoading(true);
 
     if (!name || !address) {
-      setError('Name and address are required');
+      const message = 'Land name and address are required.';
+      setError(message);
+      showToast(message, 'error');
       setLoading(false);
       return;
     }
@@ -48,7 +69,7 @@ const AddLand = () => {
         address,
         latitude: latitude ? parseFloat(latitude) : null,
         longitude: longitude ? parseFloat(longitude) : null,
-        area_sqft: areaSqft ? parseInt(areaSqft) : null,
+        area_sqft: areaSqft ? parseInt(areaSqft, 10) : null,
         land_type: landType,
         soil_type: soilType || null,
         water_availability: waterAvailability,
@@ -56,271 +77,223 @@ const AddLand = () => {
         description: description || null,
       });
 
-      alert('✅ Land added successfully!');
+      showToast('Land added successfully.', 'success');
       navigate('/my-land');
     } catch (err) {
-      console.error('Error adding land:', err);
-      setError(err.response?.data?.message || 'Failed to add land');
+      console.error('AddLand handleSubmit failed:', err);
+      const message = err.response?.data?.message || 'Failed to add land.';
+      setError(message);
+      showToast(message, 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  const styles = {
-    body: {
-      fontFamily: "'Segoe UI', sans-serif",
-      backgroundColor: '#f8f9fa',
-      minHeight: '100vh',
-      padding: '20px',
-    },
-    container: {
-      maxWidth: '600px',
-      margin: 'auto',
-      background: 'white',
-      padding: '30px',
-      borderRadius: '15px',
-      boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
-      borderTop: '8px solid #2d6a4f',
-    },
-    btnBack: {
-      backgroundColor: 'transparent',
-      color: '#2d6a4f',
-      border: '2px solid #2d6a4f',
-      padding: '10px 20px',
-      borderRadius: '8px',
-      cursor: 'pointer',
-      fontWeight: 'bold',
-      marginBottom: '20px',
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: '8px',
-    },
-    h2: {
-      color: '#2d6a4f',
-      textAlign: 'center',
-      marginBottom: '30px',
-    },
-    formGroup: {
-      marginBottom: '20px',
-    },
-    label: {
-      display: 'block',
-      fontWeight: 'bold',
-      marginBottom: '5px',
-      color: '#444',
-    },
-    input: {
-      width: '100%',
-      padding: '12px',
-      border: '1px solid #ccc',
-      borderRadius: '8px',
-      fontSize: '16px',
-      boxSizing: 'border-box',
-    },
-    select: {
-      width: '100%',
-      padding: '12px',
-      border: '1px solid #ccc',
-      borderRadius: '8px',
-      fontSize: '16px',
-      boxSizing: 'border-box',
-    },
-    geoBtn: {
-      background: '#6c584c',
-      color: 'white',
-      border: 'none',
-      padding: '8px 12px',
-      borderRadius: '5px',
-      marginTop: '5px',
-      cursor: 'pointer',
-      fontSize: '12px',
-    },
-    btnSubmit: {
-      backgroundColor: '#2d6a4f',
-      color: 'white',
-      padding: '15px 30px',
-      border: 'none',
-      borderRadius: '8px',
-      fontSize: '18px',
-      cursor: 'pointer',
-      width: '100%',
-      fontWeight: 'bold',
-      marginTop: '20px',
-    },
-    error: {
-      background: '#fee',
-      color: '#c00',
-      padding: '10px',
-      borderRadius: '8px',
-      marginBottom: '20px',
-      textAlign: 'center',
-    },
-    row: {
-      display: 'flex',
-      gap: '15px',
-    },
-    col: {
-      flex: 1,
-    },
-  };
-
   return (
-    <div style={styles.body}>
-      <div style={styles.container}>
-        <button style={styles.btnBack} onClick={() => navigate('/my-land')}>
-          <i className="fas fa-arrow-left"></i> Back to My Land
-        </button>
-
-        <h2 style={styles.h2}>🏞️ Add New Land</h2>
-
-        {error && <div style={styles.error}>{error}</div>}
-
-        <form onSubmit={handleSubmit}>
-          <div style={styles.formGroup}>
-            <label style={styles.label}>Land Name *</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Kovilpatti Farm Land"
-              style={styles.input}
-              required
-            />
-          </div>
-
-          <div style={styles.formGroup}>
-            <label style={styles.label}>Address *</label>
-            <input
-              type="text"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder="Full address of the land"
-              style={styles.input}
-              required
-            />
-          </div>
-
-          <div style={styles.row}>
-            <div style={{ ...styles.formGroup, ...styles.col }}>
-              <label style={styles.label}>Latitude</label>
-              <input
-                type="text"
-                value={latitude}
-                onChange={(e) => setLatitude(e.target.value)}
-                placeholder="e.g. 9.1711"
-                style={styles.input}
-              />
-            </div>
-            <div style={{ ...styles.formGroup, ...styles.col }}>
-              <label style={styles.label}>Longitude</label>
-              <input
-                type="text"
-                value={longitude}
-                onChange={(e) => setLongitude(e.target.value)}
-                placeholder="e.g. 77.8741"
-                style={styles.input}
-              />
-            </div>
-          </div>
-
-          <button type="button" onClick={getLocation} style={styles.geoBtn}>
-            📍 Get Current Location
+    <div
+      style={{
+        minHeight: '100vh',
+        background:
+          'radial-gradient(circle at top right, rgba(187,247,208,0.55), transparent 26%), linear-gradient(180deg, #f6fbf7 0%, #eef7f1 100%)',
+        fontFamily: "'Segoe UI', sans-serif",
+        padding: '28px',
+      }}
+    >
+      <div style={{ maxWidth: '1160px', margin: '0 auto', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '0.9fr 1.1fr', gap: '24px' }}>
+        <section
+          style={{
+            borderRadius: '30px',
+            padding: '30px',
+            color: 'white',
+            background:
+              'radial-gradient(circle at top right, rgba(187,247,208,0.35), transparent 24%), linear-gradient(135deg, #081c15 0%, #1b4332 50%, #2d6a4f 100%)',
+            boxShadow: '0 24px 60px rgba(12, 35, 24, 0.14)',
+          }}
+        >
+          <button
+            onClick={() => navigate('/my-land')}
+            style={{
+              border: '1px solid rgba(255,255,255,0.16)',
+              background: 'rgba(255,255,255,0.08)',
+              color: 'white',
+              borderRadius: '16px',
+              padding: '12px 16px',
+              cursor: 'pointer',
+              fontWeight: 700,
+            }}
+          >
+            <i className="fas fa-arrow-left" style={{ marginRight: '10px' }}></i>
+            Back to Land Hub
           </button>
 
-          <div style={{ ...styles.formGroup, marginTop: '20px' }}>
-            <label style={styles.label}>Total Area (sq. ft.)</label>
-            <input
-              type="number"
-              value={areaSqft}
-              onChange={(e) => setAreaSqft(e.target.value)}
-              placeholder="e.g. 5000"
-              style={styles.input}
-            />
+          <div style={{ marginTop: '26px' }}>
+            <div style={{ fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'rgba(255,255,255,0.7)' }}>
+              New Land Intake
+            </div>
+            <h1 style={{ margin: '12px 0 0', fontSize: '42px', lineHeight: 1.08 }}>Add a plantation space with the details your future events will need.</h1>
+            <p style={{ margin: '14px 0 0', color: 'rgba(255,255,255,0.78)', lineHeight: 1.7, fontSize: '17px' }}>
+              Capture the land profile, availability, water readiness, and soil conditions so events and trees can be planned properly from day one.
+            </p>
           </div>
 
-          <div style={styles.formGroup}>
-            <label style={styles.label}>Land Type</label>
-            <select
-              value={landType}
-              onChange={(e) => setLandType(e.target.value)}
-              style={styles.select}
-            >
-              <option value="Private">Private (Personal)</option>
-              <option value="Owned">Owned</option>
-              <option value="Leased">Leased / Rented</option>
-              <option value="Public">Public</option>
-              <option value="Government">Government</option>
-              <option value="School">School</option>
-              <option value="College">College</option>
-              <option value="Community">Community</option>
-            </select>
+          <div style={{ display: 'grid', gap: '14px', marginTop: '26px' }}>
+            {[
+              ['Accurate mapping', 'Save coordinates to connect real land with event operations.'],
+              ['Soil and water context', 'Record readiness for healthy tree survival.'],
+              ['Campaign alignment', 'Use this land later when creating an event.'],
+            ].map(([title, text]) => (
+              <div key={title} style={{ background: 'rgba(255,255,255,0.08)', borderRadius: '20px', padding: '18px' }}>
+                <div style={{ fontWeight: 800, marginBottom: '8px' }}>{title}</div>
+                <div style={{ color: 'rgba(255,255,255,0.74)', lineHeight: 1.6 }}>{text}</div>
+              </div>
+            ))}
           </div>
+        </section>
 
-          <div style={styles.formGroup}>
-            <label style={styles.label}>Soil Type (Optional)</label>
-            <select
-              value={soilType}
-              onChange={(e) => setSoilType(e.target.value)}
-              style={styles.select}
-            >
-              <option value="">-- Select Soil Type --</option>
-              <option value="Red">Red Soil</option>
-              <option value="Clay">Clay Soil</option>
-              <option value="Sandy">Sandy Soil</option>
-              <option value="Loamy">Loamy Soil</option>
-              <option value="Black">Black Soil</option>
-              <option value="Other">Other</option>
-            </select>
-          </div>
+        <section
+          style={{
+            background: 'rgba(255,255,255,0.96)',
+            borderRadius: '30px',
+            padding: '32px',
+            boxShadow: '0 24px 60px rgba(15, 47, 36, 0.08)',
+            border: '1px solid #e8f3eb',
+          }}
+        >
+          <h2 style={{ margin: 0, color: '#163126', fontSize: '32px' }}>Land Details</h2>
+          <p style={{ margin: '8px 0 24px', color: '#52796f', lineHeight: 1.6 }}>
+            Fill in the most important operating details. You can refine the land later from the detail view.
+          </p>
 
-          <div style={styles.formGroup}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={waterAvailability}
-                onChange={(e) => setWaterAvailability(e.target.checked)}
-                style={{ width: '20px', height: '20px' }}
-              />
-              <span style={{ fontWeight: 'bold', color: '#444' }}>Water Available on Land</span>
-            </label>
-          </div>
-
-          {waterAvailability && (
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Water Source</label>
-              <input
-                type="text"
-                value={waterSource}
-                onChange={(e) => setWaterSource(e.target.value)}
-                placeholder="e.g. Well, Borewell, Nearby lake"
-                style={styles.input}
-              />
+          {error && (
+            <div style={{ marginBottom: '16px', background: '#fff1f2', color: '#be123c', padding: '14px 16px', borderRadius: '16px' }}>
+              {error}
             </div>
           )}
 
-          <div style={styles.formGroup}>
-            <label style={styles.label}>Description (Optional)</label>
-            <textarea
-              rows="3"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Any additional details about the land..."
-              style={{ ...styles.input, resize: 'vertical', minHeight: '80px' }}
-            />
-          </div>
+          <form onSubmit={handleSubmit}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+              <div>
+                <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Land Name</label>
+                <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Kovilpatti Community Plot" style={fieldStyle} required />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Land Type</label>
+                <select value={landType} onChange={(e) => setLandType(e.target.value)} style={fieldStyle}>
+                  <option value="Private">Private</option>
+                  <option value="Owned">Owned</option>
+                  <option value="Leased">Leased</option>
+                  <option value="Public">Public</option>
+                  <option value="Government">Government</option>
+                  <option value="School">School</option>
+                  <option value="College">College</option>
+                  <option value="Community">Community</option>
+                </select>
+              </div>
+            </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              ...styles.btnSubmit,
-              opacity: loading ? 0.6 : 1,
-              cursor: loading ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {loading ? 'Adding...' : 'Add Land'}
-          </button>
-        </form>
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Address</label>
+              <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Full address of the land" style={fieldStyle} required />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr auto', gap: '14px', marginBottom: '14px', alignItems: 'end' }}>
+              <div>
+                <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Latitude</label>
+                <input value={latitude} onChange={(e) => setLatitude(e.target.value)} placeholder="9.171100" style={fieldStyle} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Longitude</label>
+                <input value={longitude} onChange={(e) => setLongitude(e.target.value)} placeholder="77.874100" style={fieldStyle} />
+              </div>
+              <button
+                type="button"
+                onClick={getLocation}
+                style={{
+                  height: '48px',
+                  border: 'none',
+                  background: '#163126',
+                  color: 'white',
+                  borderRadius: '16px',
+                  padding: '0 16px',
+                  cursor: 'pointer',
+                  fontWeight: 700,
+                }}
+              >
+                Use Current
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+              <div>
+                <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Area (sq.ft)</label>
+                <input type="number" value={areaSqft} onChange={(e) => setAreaSqft(e.target.value)} placeholder="5000" style={fieldStyle} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Soil Type</label>
+                <select value={soilType} onChange={(e) => setSoilType(e.target.value)} style={fieldStyle}>
+                  <option value="">Select Soil Type</option>
+                  <option value="Red">Red</option>
+                  <option value="Clay">Clay</option>
+                  <option value="Sandy">Sandy</option>
+                  <option value="Loamy">Loamy</option>
+                  <option value="Black">Black</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+            </div>
+
+            <div
+              style={{
+                padding: '18px',
+                borderRadius: '20px',
+                background: '#f5fbf7',
+                border: '1px solid #e0efe6',
+                marginBottom: '14px',
+              }}
+            >
+              <label style={{ display: 'flex', alignItems: 'center', gap: '12px', fontWeight: 700, color: '#163126', cursor: 'pointer' }}>
+                <input type="checkbox" checked={waterAvailability} onChange={(e) => setWaterAvailability(e.target.checked)} />
+                Water is available on this land
+              </label>
+
+              {waterAvailability && (
+                <div style={{ marginTop: '14px' }}>
+                  <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Water Source</label>
+                  <input value={waterSource} onChange={(e) => setWaterSource(e.target.value)} placeholder="Borewell, tank, rain harvest..." style={fieldStyle} />
+                </div>
+              )}
+            </div>
+
+            <div style={{ marginBottom: '22px' }}>
+              <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Description</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Anything special about this land, access conditions, or planting potential."
+                style={{ ...fieldStyle, minHeight: '120px', resize: 'vertical' }}
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                width: '100%',
+                border: 'none',
+                background: 'linear-gradient(135deg, #2d6a4f, #1b4332)',
+                color: 'white',
+                borderRadius: '18px',
+                padding: '16px',
+                fontWeight: 800,
+                fontSize: '16px',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                opacity: loading ? 0.7 : 1,
+              }}
+            >
+              {loading ? 'Saving Land...' : 'Save Land'}
+            </button>
+          </form>
+        </section>
       </div>
     </div>
   );

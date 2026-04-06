@@ -21,6 +21,16 @@ const treeSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Land',
     },
+    latitude: {
+      type: Number,
+    },
+    longitude: {
+      type: Number,
+    },
+    spot_label: {
+      type: String,
+      maxlength: 100,
+    },
     sponsor_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
@@ -55,6 +65,9 @@ const treeSchema = new mongoose.Schema(
       type: Date,
     },
     last_fertilized: {
+      type: Date,
+    },
+    maintenance_due_at: {
       type: Date,
     },
     has_tree_guard: {

@@ -1,273 +1,246 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import api from '../services/api';
+import { useResponsive } from '../hooks/useResponsive';
 
 const MyLand = () => {
   const [lands, setLands] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const { isMobile, isTablet } = useResponsive();
 
-  // Helper to get ID (handles both MongoDB _id and SQL id)
   const getId = (item) => item?._id || item?.id;
 
-  useEffect(() => {
-    fetchLands();
-  }, []);
-
-  const fetchLands = async () => {
+  const fetchLands = useCallback(async () => {
     try {
       const res = await api.get('/lands/mine');
       setLands(res.data);
     } catch (err) {
-      console.error(err);
+      console.error('MyLand fetchLands failed:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const styles = {
-    body: {
-      display: 'flex',
-      backgroundColor: '#f4f7f6',
-      minHeight: '100vh',
-      fontFamily: "'Segoe UI', sans-serif",
-    },
-    mainContent: {
-      marginLeft: '260px',
-      width: 'calc(100% - 260px)',
-      padding: '30px',
-    },
-    header: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: '30px',
-    },
-    title: {
-      fontSize: '28px',
-      color: '#1b4332',
-      margin: 0,
-    },
-    addBtn: {
-      background: '#2d6a4f',
-      color: 'white',
-      padding: '12px 24px',
-      border: 'none',
-      borderRadius: '25px',
-      cursor: 'pointer',
-      fontWeight: 'bold',
-      display: 'flex',
-      alignItems: 'center',
-      gap: '8px',
-      transition: '0.3s',
-    },
-    statsGrid: {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-      gap: '20px',
-      marginBottom: '30px',
-    },
-    statCard: {
-      background: 'white',
-      padding: '20px',
-      borderRadius: '12px',
-      boxShadow: '0 4px 6px rgba(0,0,0,0.05)',
-      borderLeft: '5px solid #2d6a4f',
-    },
-    landGrid: {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))',
-      gap: '25px',
-    },
-    landCard: {
-      background: 'white',
-      borderRadius: '15px',
-      overflow: 'hidden',
-      boxShadow: '0 10px 20px rgba(0,0,0,0.05)',
-      transition: '0.3s',
-    },
-    landBanner: {
-      height: '100px',
-      background: 'linear-gradient(135deg, #d8f3dc, #b7e4c7)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontSize: '40px',
-    },
-    landBody: {
-      padding: '20px',
-    },
-    badge: {
-      display: 'inline-block',
-      padding: '4px 12px',
-      borderRadius: '12px',
-      fontSize: '11px',
-      fontWeight: 'bold',
-      color: 'white',
-      marginBottom: '10px',
-    },
-    infoRow: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      padding: '8px 0',
-      borderBottom: '1px solid #eee',
-      fontSize: '14px',
-    },
-    viewBtn: {
-      width: '100%',
-      padding: '10px',
-      border: '1px solid #2d6a4f',
-      background: 'transparent',
-      color: '#2d6a4f',
-      borderRadius: '8px',
-      cursor: 'pointer',
-      fontWeight: 'bold',
-      marginTop: '15px',
-      transition: '0.3s',
-    },
-    emptyState: {
-      textAlign: 'center',
-      padding: '60px',
-      color: '#888',
-    },
-  };
-
-  const getStatusColor = (status) => {
-    const colors = { Available: '#2d6a4f', 'In Use': '#ff9f1c', Full: '#e63946' };
-    return colors[status] || '#888';
-  };
+  useEffect(() => {
+    fetchLands();
+  }, [fetchLands]);
 
   const totalLands = lands.length;
   const totalTrees = lands.reduce((sum, land) => sum + (land.trees?.length || 0), 0);
   const totalEvents = lands.reduce((sum, land) => sum + (land.events?.length || 0), 0);
+  const wateredReady = lands.filter((land) => land.water_availability).length;
+
+  const getStatusTone = (status) => {
+    const tones = {
+      Available: { bg: '#dcfce7', color: '#166534' },
+      Reserved: { bg: '#fef3c7', color: '#92400e' },
+      Active: { bg: '#dbeafe', color: '#1d4ed8' },
+      Completed: { bg: '#e5e7eb', color: '#374151' },
+    };
+    return tones[status] || tones.Available;
+  };
 
   return (
-    <div style={styles.body}>
+    <div style={{ display: isMobile ? 'block' : 'flex', minHeight: '100vh', background: 'linear-gradient(180deg, #f5fbf7 0%, #edf6f0 100%)', fontFamily: "'Segoe UI', sans-serif" }}>
       <Sidebar />
 
-      <div style={styles.mainContent}>
-        {/* Header */}
-        <div style={styles.header}>
-          <div>
-            <h1 style={styles.title}>🏞️ My Land</h1>
-            <p style={{ color: '#666', margin: '5px 0 0' }}>Manage your land and tree plantations</p>
+      <main style={{ marginLeft: isMobile ? 0 : isTablet ? '240px' : '280px', width: isMobile ? '100%' : `calc(100% - ${isTablet ? '240px' : '280px'})`, padding: isMobile ? '18px' : '30px 34px 40px' }}>
+        <section
+          style={{
+            borderRadius: '30px',
+            padding: '32px',
+            color: 'white',
+            background:
+              'radial-gradient(circle at top right, rgba(187,247,208,0.4), transparent 24%), linear-gradient(135deg, #0b1f17 0%, #1b4332 45%, #2d6a4f 100%)',
+            boxShadow: '0 28px 70px rgba(12, 35, 24, 0.14)',
+          }}
+        >
+          <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', gap: '24px', alignItems: 'flex-start' }}>
+            <div style={{ maxWidth: '700px' }}>
+              <div style={{ fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'rgba(255,255,255,0.7)' }}>
+                Land Hub
+              </div>
+              <h1 style={{ margin: '10px 0 0', fontSize: '42px', lineHeight: 1.08 }}>Design the spaces where your plantation story grows.</h1>
+              <p style={{ margin: '14px 0 0', color: 'rgba(255,255,255,0.78)', lineHeight: 1.7, fontSize: '17px' }}>
+                Track available land, event activity, and planting density across every location you manage.
+              </p>
+            </div>
+
+            <button
+              onClick={() => navigate('/add-land')}
+              style={{
+                border: 'none',
+                background: 'linear-gradient(135deg, #bbf7d0, #86efac)',
+                color: '#0f2f24',
+                borderRadius: '18px',
+                padding: '14px 20px',
+                fontWeight: 800,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <i className="fas fa-plus" style={{ marginRight: '10px' }}></i>
+              Add Land
+            </button>
           </div>
-          <button
-            style={styles.addBtn}
-            onClick={() => navigate('/add-land')}
-            onMouseOver={(e) => {
-              e.target.style.background = '#1b4332';
-              e.target.style.transform = 'translateY(-2px)';
-            }}
-            onMouseOut={(e) => {
-              e.target.style.background = '#2d6a4f';
-              e.target.style.transform = 'translateY(0)';
+
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : isTablet ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))', gap: '14px', marginTop: '24px' }}>
+            {[
+              ['Total Lands', totalLands],
+              ['Trees Across Lands', totalTrees],
+              ['Hosted Events', totalEvents],
+              ['Water Ready', wateredReady],
+            ].map(([label, value]) => (
+              <div key={label} style={{ background: 'rgba(255,255,255,0.08)', borderRadius: '22px', padding: '18px' }}>
+                <div style={{ color: 'rgba(255,255,255,0.68)', fontSize: '13px' }}>{label}</div>
+                <div style={{ fontSize: '34px', fontWeight: 800, marginTop: '4px' }}>{value}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section style={{ marginTop: '26px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h2 style={{ margin: 0, color: '#163126', fontSize: '28px' }}>Land Portfolio</h2>
+            <p style={{ margin: '6px 0 0', color: '#52796f' }}>Every plot, event, and tree count in one glance.</p>
+          </div>
+        </section>
+
+        {loading ? (
+          <div style={{ padding: '70px 20px', textAlign: 'center', color: '#52796f' }}>
+            <i className="fas fa-spinner fa-spin" style={{ marginRight: '10px' }}></i>
+            Loading lands...
+          </div>
+        ) : lands.length === 0 ? (
+          <div
+            style={{
+              marginTop: '22px',
+              background: 'white',
+              borderRadius: '30px',
+              padding: '56px 24px',
+              textAlign: 'center',
+              boxShadow: '0 18px 50px rgba(15, 47, 36, 0.06)',
             }}
           >
-            <i className="fas fa-plus"></i> Add Land
-          </button>
-        </div>
-
-        {/* Stats */}
-        <div style={styles.statsGrid}>
-          <div style={styles.statCard}>
-            <h4 style={{ fontSize: '14px', color: '#666', margin: 0 }}>Total Lands</h4>
-            <p style={{ fontSize: '28px', fontWeight: 'bold', color: '#2d6a4f', margin: '5px 0 0' }}>
-              {totalLands}
-            </p>
-          </div>
-          <div style={styles.statCard}>
-            <h4 style={{ fontSize: '14px', color: '#666', margin: 0 }}>Trees Planted</h4>
-            <p style={{ fontSize: '28px', fontWeight: 'bold', color: '#2d6a4f', margin: '5px 0 0' }}>
-              {totalTrees}
-            </p>
-          </div>
-          <div style={styles.statCard}>
-            <h4 style={{ fontSize: '14px', color: '#666', margin: 0 }}>Events Hosted</h4>
-            <p style={{ fontSize: '28px', fontWeight: 'bold', color: '#2d6a4f', margin: '5px 0 0' }}>
-              {totalEvents}
-            </p>
-          </div>
-        </div>
-
-        {/* Land Grid */}
-        {loading ? (
-          <p style={{ textAlign: 'center', color: '#888' }}>
-            <i className="fas fa-spinner fa-spin"></i> Loading lands...
-          </p>
-        ) : lands.length === 0 ? (
-          <div style={styles.emptyState}>
-            <i className="fas fa-map" style={{ fontSize: '60px', marginBottom: '20px', display: 'block', color: '#ccc' }}></i>
-            <p>No lands added yet. Add your first land to start planting!</p>
+            <i className="fas fa-mountain" style={{ fontSize: '52px', color: '#84cc16', marginBottom: '18px' }}></i>
+            <h3 style={{ margin: 0, color: '#163126', fontSize: '26px' }}>No land added yet</h3>
+            <p style={{ margin: '10px 0 0', color: '#52796f' }}>Start by mapping your first plantation space.</p>
             <button
-              style={{ ...styles.addBtn, margin: '20px auto' }}
               onClick={() => navigate('/add-land')}
+              style={{
+                marginTop: '18px',
+                border: 'none',
+                background: 'linear-gradient(135deg, #2d6a4f, #1b4332)',
+                color: 'white',
+                borderRadius: '18px',
+                padding: '14px 18px',
+                fontWeight: 800,
+                cursor: 'pointer',
+              }}
             >
-              <i className="fas fa-plus"></i> Add Land
+              Add First Land
             </button>
           </div>
         ) : (
-          <div style={styles.landGrid}>
+          <div style={{ marginTop: '22px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '22px' }}>
             {lands.map((land) => {
-              const landId = getId(land);
+              const tone = getStatusTone(land.status);
               return (
-                <div
-                  key={landId}
-                  style={styles.landCard}
-                  onMouseOver={(e) => (e.currentTarget.style.transform = 'translateY(-5px)')}
-                  onMouseOut={(e) => (e.currentTarget.style.transform = 'translateY(0)')}
+                <article
+                  key={getId(land)}
+                  style={{
+                    background: 'white',
+                    borderRadius: '28px',
+                    overflow: 'hidden',
+                    border: '1px solid #e8f3eb',
+                    boxShadow: '0 20px 55px rgba(15, 47, 36, 0.07)',
+                  }}
                 >
-                  <div style={styles.landBanner}>🏞️</div>
-
-                  <div style={styles.landBody}>
-                    <span style={{ ...styles.badge, background: getStatusColor(land.status) }}>
-                      {land.status}
-                    </span>
-
-                    <h3 style={{ fontSize: '18px', margin: '0 0 5px', color: '#1b4332' }}>{land.name}</h3>
-                    <p style={{ fontSize: '13px', color: '#666', margin: '0 0 15px' }}>
-                      <i className="fas fa-map-marker-alt"></i> {land.address}
-                    </p>
-
-                    <div style={styles.infoRow}>
-                      <span>Type</span>
-                      <strong>{land.land_type}</strong>
+                  <div
+                    style={{
+                      padding: '24px',
+                      background:
+                        'radial-gradient(circle at top right, rgba(187,247,208,0.45), transparent 24%), linear-gradient(135deg, #f4fff7 0%, #e5f7ea 100%)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'flex-start' }}>
+                      <div>
+                        <div style={{ color: '#52796f', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{land.land_type}</div>
+                        <h3 style={{ margin: '8px 0 6px', fontSize: '24px', color: '#163126' }}>{land.name}</h3>
+                        <div style={{ color: '#52796f', lineHeight: 1.5 }}>
+                          <i className="fas fa-map-marker-alt" style={{ marginRight: '8px', color: '#2d6a4f' }}></i>
+                          {land.address}
+                        </div>
+                      </div>
+                      <span
+                        style={{
+                          background: tone.bg,
+                          color: tone.color,
+                          padding: '8px 12px',
+                          borderRadius: '999px',
+                          fontSize: '11px',
+                          fontWeight: 800,
+                        }}
+                      >
+                        {land.status}
+                      </span>
                     </div>
-                    <div style={styles.infoRow}>
-                      <span>Area</span>
-                      <strong>{land.area_sqft || 'N/A'} sq.ft</strong>
+                  </div>
+
+                  <div style={{ padding: '22px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                      {[
+                        ['Area', land.area_sqft ? `${land.area_sqft} sq.ft` : 'Not set'],
+                        ['Soil', land.soil_type || 'Unknown'],
+                        ['Trees', land.trees?.length || 0],
+                        ['Events', land.events?.length || 0],
+                      ].map(([label, value]) => (
+                        <div key={label} style={{ background: '#f5fbf7', borderRadius: '18px', padding: '14px' }}>
+                          <div style={{ fontSize: '12px', color: '#52796f' }}>{label}</div>
+                          <div style={{ marginTop: '6px', fontWeight: 800, color: '#163126' }}>{value}</div>
+                        </div>
+                      ))}
                     </div>
-                    <div style={styles.infoRow}>
-                      <span>Trees Planted</span>
-                      <strong>{land.trees?.length || 0}</strong>
-                    </div>
-                    <div style={styles.infoRow}>
-                      <span>Events</span>
-                      <strong>{land.events?.length || 0}</strong>
+
+                    <div
+                      style={{
+                        marginTop: '16px',
+                        padding: '14px 16px',
+                        borderRadius: '18px',
+                        background: land.water_availability ? '#ecfdf5' : '#f8fafc',
+                        color: land.water_availability ? '#166534' : '#64748b',
+                        fontWeight: 700,
+                      }}
+                    >
+                      <i className={`fas ${land.water_availability ? 'fa-droplet' : 'fa-droplet-slash'}`} style={{ marginRight: '10px' }}></i>
+                      {land.water_availability ? `Water source: ${land.water_source || 'Available'}` : 'Water source not configured'}
                     </div>
 
                     <button
-                      style={styles.viewBtn}
-                      onClick={() => navigate(`/land/${landId}`)}
-                      onMouseOver={(e) => {
-                        e.target.style.background = '#2d6a4f';
-                        e.target.style.color = 'white';
-                      }}
-                      onMouseOut={(e) => {
-                        e.target.style.background = 'transparent';
-                        e.target.style.color = '#2d6a4f';
+                      onClick={() => navigate(`/land/${getId(land)}`)}
+                      style={{
+                        marginTop: '18px',
+                        width: '100%',
+                        border: 'none',
+                        background: 'linear-gradient(135deg, #2d6a4f, #1b4332)',
+                        color: 'white',
+                        borderRadius: '18px',
+                        padding: '14px',
+                        fontWeight: 800,
+                        cursor: 'pointer',
                       }}
                     >
-                      View Details
+                      Open Land Detail
                     </button>
                   </div>
-                </div>
+                </article>
               );
             })}
           </div>
         )}
-      </div>
+      </main>
     </div>
   );
 };

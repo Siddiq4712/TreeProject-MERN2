@@ -11,6 +11,7 @@ import EventSupply from './eventSupply.js';
 import EventVolunteer from './eventVolunteer.js';
 import EventResource from './eventResource.js';
 import LandActivity from './landActivity.js';
+import PlantTracking from './plantTracking.js';
 
 // Export
 const db = {
@@ -25,6 +26,7 @@ const db = {
   EventVolunteer,
   EventResource,
   LandActivity,
+  PlantTracking,
 };
 
 export default db;
