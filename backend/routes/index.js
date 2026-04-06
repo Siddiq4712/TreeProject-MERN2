@@ -1,0 +1,14 @@
+import { Router } from 'express';
+import authRoutes from './authRoutes.js';
+import eventRoutes from './eventRoutes.js';
+import landRoutes from './landRoutes.js';
+import treeRoutes from './treeRoutes.js';
+
+const router = Router();
+
+router.use('/auth', authRoutes);
+router.use('/events', eventRoutes);
+router.use('/lands', landRoutes);
+router.use('/trees', treeRoutes);
+
+export default router;
