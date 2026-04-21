@@ -5,6 +5,12 @@ import JoinEventModal from "./JoinEventModal";
 import api from "../services/api";
 import { AuthContext } from "../context/auth-context";
 import { useResponsive } from "../hooks/useResponsive";
+import PaginationControls from "../components/PaginationControls";
+import {
+  DEFAULT_PAGE_SIZE,
+  getPaginationParams,
+  normalizePaginatedResponse,
+} from "../services/pagination";
 
 const quickActions = [
   {
@@ -31,6 +37,8 @@ const Dashboard = () => {
   const [events, setEvents] = useState([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState(null);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const { user } = useContext(AuthContext);
@@ -41,14 +49,18 @@ const Dashboard = () => {
 
   const fetchEvents = useCallback(async () => {
     try {
-      const res = await api.get("/events");
-      setEvents(res.data);
+      const res = await api.get("/events", {
+        params: getPaginationParams(page, DEFAULT_PAGE_SIZE),
+      });
+      const normalized = normalizePaginatedResponse(res.data);
+      setEvents(normalized.items);
+      setPagination(normalized.pagination);
     } catch (err) {
       console.error("Dashboard fetchEvents failed:", err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page]);
 
   useEffect(() => {
     if (!user) return;
@@ -72,6 +84,11 @@ const Dashboard = () => {
       `${ev.location} ${ev.event_id} ${ev.tree_species || ""}`.toLowerCase();
     return text.includes(search.toLowerCase());
   });
+
+  const handlePageChange = (nextPage) => {
+    if (nextPage < 1 || nextPage === page) return;
+    setPage(nextPage);
+  };
 
   const formatDate = (str) => {
     if (!str) return "Date TBD";
@@ -503,7 +520,7 @@ const Dashboard = () => {
                     background: "white",
                     borderRadius: "28px",
                     overflow: "hidden",
-                    boxShadow: "0 22px 55px rgba(15, 47, 36, 0.08)",
+                    boxShadow: "0 24px 60px rgba(15, 47, 36, 0.09)",
                     cursor: "pointer",
                     border: "1px solid #ecf5ef",
                   }}
@@ -548,6 +565,17 @@ const Dashboard = () => {
                           {ev.tree_count} trees ·{" "}
                           {ev.tree_species || "Mixed species"}
                         </div>
+                        <p
+                          style={{
+                            margin: "10px 0 0",
+                            color: "#52796f",
+                            fontSize: "13px",
+                            lineHeight: 1.6,
+                            maxWidth: "480px",
+                          }}
+                        >
+                          {ev.description || "Track funding, volunteers, resources, and field readiness from a single event card."}
+                        </p>
                       </div>
                       <span
                         style={{
@@ -784,6 +812,12 @@ const Dashboard = () => {
             })}
           </div>
         )}
+
+        <PaginationControls
+          pagination={pagination}
+          onPageChange={handlePageChange}
+          loading={loading}
+        />
 
         {showJoinModal && selectedEvent && (
           <JoinEventModal

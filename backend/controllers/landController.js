@@ -1,4 +1,5 @@
 import * as landService from '../services/landService.js';
+import { parsePagination } from '../utils/pagination.js';
 
 export const create = async (req, res) => {
   const { name, address, latitude, longitude, area_sqft, land_type, soil_type, water_availability, water_source, description, photos } = req.body;
@@ -25,7 +26,7 @@ export const create = async (req, res) => {
 
 export const getAll = async (req, res) => {
   try {
-    const lands = await landService.getAllLands();
+    const lands = await landService.getAllLands(parsePagination(req.query));
     res.json(lands);
   } catch (err) {
     console.error(err);
@@ -35,7 +36,7 @@ export const getAll = async (req, res) => {
 
 export const getMine = async (req, res) => {
   try {
-    const lands = await landService.getMyLands(req.user.id);
+    const lands = await landService.getMyLands(req.user.id, parsePagination(req.query));
     res.json(lands);
   } catch (err) {
     console.error(err);

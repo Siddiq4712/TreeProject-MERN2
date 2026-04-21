@@ -50,5 +50,7 @@ const eventResourceSchema = new mongoose.Schema(
   }
 );
 
+eventResourceSchema.index({ event_id: 1, resource_type: 1 });
+
 const EventResource = mongoose.model('EventResource', eventResourceSchema);
 export default EventResource;

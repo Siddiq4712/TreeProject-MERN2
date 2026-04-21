@@ -1,4 +1,5 @@
 import * as eventService from '../services/eventService.js';
+import { parsePagination } from '../utils/pagination.js';
 
 export const create = async (req, res) => {
   const {
@@ -82,7 +83,7 @@ export const create = async (req, res) => {
 // Get all events (excluding user's own)
 export const getAll = async (req, res) => {
   try {
-    const events = await eventService.getAllEvents(req.user.id);
+    const events = await eventService.getAllEvents(req.user.id, parsePagination(req.query));
     res.json(events);
   } catch (err) {
     console.error(err);
@@ -93,7 +94,7 @@ export const getAll = async (req, res) => {
 // Get my created events
 export const getMyCreated = async (req, res) => {
   try {
-    const events = await eventService.getMyCreatedEvents(req.user.id);
+    const events = await eventService.getMyCreatedEvents(req.user.id, parsePagination(req.query));
     res.json(events);
   } catch (err) {
     console.error(err);

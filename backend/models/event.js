@@ -172,5 +172,12 @@ const eventSchema = new mongoose.Schema(
   }
 );
 
+eventSchema.index({ creator_id: 1, created_at: -1 });
+eventSchema.index({ creator_id: 1, is_active: 1, created_at: -1 });
+eventSchema.index({ land_id: 1, created_at: -1 });
+eventSchema.index({ is_active: 1, created_at: -1 });
+eventSchema.index({ current_phase: 1, created_at: -1 });
+eventSchema.index({ join_deadline: 1, is_active: 1 });
+
 const Event = mongoose.model('Event', eventSchema);
 export default Event;

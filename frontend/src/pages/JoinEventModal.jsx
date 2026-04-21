@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import api from '../services/api';
+import { showError, showInfo, showSuccess } from '../services/dialogs';
 
 const JoinEventModal = ({ event, onClose, onSuccess }) => {
   const [contributionType, setContributionType] = useState('Labor');
@@ -115,15 +116,16 @@ const JoinEventModal = ({ event, onClose, onSuccess }) => {
       });
 
       // Change the alert message based on response
-      alert(
-        res.data.request_status === 'ACCEPTED'
-          ? `✅ Auto-accepted!\n\n🌿 You earned ${res.data.karma_earned} Karma points!`
-          : `📨 Request Sent!\n\nWaiting for organizer approval.\nPotential Karma: +${res.data.karma_earned}`
-      );
+      if (res.data.request_status === 'ACCEPTED') {
+        await showSuccess('Auto-accepted', `You earned ${res.data.karma_earned} karma points.`);
+      } else {
+        await showInfo('Request sent', `Waiting for organizer approval. Potential karma: +${res.data.karma_earned}`);
+      }
 
       onSuccess();
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to join event');
+      showError('Failed to join event', err.response?.data?.message || 'Please try again.');
     } finally {
       setLoading(false);
     }

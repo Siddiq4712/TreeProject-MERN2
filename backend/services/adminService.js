@@ -1,60 +1,74 @@
 import db from '../models/index.js';
+import { createPaginatedResponse } from '../utils/pagination.js';
 
 const sumBy = (items, selector) => items.reduce((sum, item) => sum + selector(item), 0);
 
 export const getAdminDashboard = async () => {
-  const [users, events, lands, trees, contributions, tasks] = await Promise.all([
-    db.User.find().lean(),
-    db.Event.find().lean(),
-    db.Land.find().lean(),
-    db.Tree.find().lean(),
-    db.EventVolunteer.find().lean(),
-    db.TreeTask.find().lean(),
+  const [usersCount, volunteerCount, sponsorCount, landownerCount, organizationCount, eventsCount, activeEventsCount, landsCount, treesCount, healthyTreesCount, donationsAgg, volunteerHoursAgg, tasksCount, recentUsers, recentEvents] = await Promise.all([
+    db.User.countDocuments(),
+    db.User.countDocuments({ role: 'Volunteer' }),
+    db.User.countDocuments({ role: 'Sponsor' }),
+    db.User.countDocuments({ role: 'Landowner' }),
+    db.User.countDocuments({ account_type: 'Organization' }),
+    db.Event.countDocuments(),
+    db.Event.countDocuments({ current_phase: { $ne: 'COMPLETED' }, is_active: { $ne: false } }),
+    db.Land.countDocuments(),
+    db.Tree.countDocuments(),
+    db.Tree.countDocuments({ survival_status: 'Healthy' }),
+    db.EventVolunteer.aggregate([
+      { $match: { contribution_type: 'Capital', request_status: 'ACCEPTED' } },
+      { $group: { _id: null, total: { $sum: { $ifNull: ['$contribution_amount', 0] } } } },
+    ]),
+    db.EventVolunteer.aggregate([
+      { $group: { _id: null, total: { $sum: { $ifNull: ['$volunteer_hours', 0] } } } },
+    ]),
+    db.TreeTask.countDocuments(),
+    db.User.find().sort({ created_at: -1 }).limit(8).lean(),
+    db.Event.find().sort({ created_at: -1 }).limit(8).lean(),
   ]);
-
-  const totalDonations = sumBy(
-    contributions.filter((entry) => entry.contribution_type === 'Capital' && entry.request_status === 'ACCEPTED'),
-    (entry) => Number(entry.contribution_amount || 0)
-  );
-
-  const volunteerHours = sumBy(contributions, (entry) => Number(entry.volunteer_hours || 0));
 
   return {
     stats: {
-      users: users.length,
-      volunteers: users.filter((user) => user.role === 'Volunteer').length,
-      sponsors: users.filter((user) => user.role === 'Sponsor').length,
-      landowners: users.filter((user) => user.role === 'Landowner').length,
-      organizations: users.filter((user) => user.account_type === 'Organization').length,
-      events: events.length,
-      active_events: events.filter((event) => event.current_phase !== 'COMPLETED' && event.is_active !== false).length,
-      lands: lands.length,
-      trees: trees.length,
-      healthy_trees: trees.filter((tree) => tree.survival_status === 'Healthy').length,
-      total_donations: totalDonations,
-      volunteer_hours: volunteerHours,
-      completed_tasks: tasks.length,
+      users: usersCount,
+      volunteers: volunteerCount,
+      sponsors: sponsorCount,
+      landowners: landownerCount,
+      organizations: organizationCount,
+      events: eventsCount,
+      active_events: activeEventsCount,
+      lands: landsCount,
+      trees: treesCount,
+      healthy_trees: healthyTreesCount,
+      total_donations: Number(donationsAgg[0]?.total || 0),
+      volunteer_hours: Number(volunteerHoursAgg[0]?.total || 0),
+      completed_tasks: tasksCount,
     },
-    recentUsers: users
-      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-      .slice(0, 8),
-    recentEvents: events
-      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-      .slice(0, 8),
+    recentUsers,
+    recentEvents,
   };
 };
 
-export const getUsers = async (filters = {}) => {
+export const getUsers = async (filters = {}, pagination) => {
   const query = {};
   if (filters.role) query.role = filters.role;
   if (filters.account_type) query.account_type = filters.account_type;
 
-  const users = await db.User.find(query)
-    .select('name email role account_type organization_name phone sponsor_logo_url bio is_active karma_points created_at')
-    .sort({ created_at: -1 })
-    .lean();
+  const [users, total] = await Promise.all([
+    db.User.find(query)
+      .select('name email role account_type organization_name phone sponsor_logo_url bio is_active karma_points created_at')
+      .sort({ created_at: -1 })
+      .skip(pagination.skip)
+      .limit(pagination.limit)
+      .lean(),
+    db.User.countDocuments(query),
+  ]);
 
-  return users;
+  return createPaginatedResponse({
+    items: users,
+    page: pagination.page,
+    limit: pagination.limit,
+    total,
+  });
 };
 
 export const updateUser = async (userId, payload) => {
@@ -74,11 +88,12 @@ export const updateUser = async (userId, payload) => {
   return user;
 };
 
-export const getReports = async () => {
+export const getReports = async (limits = {}) => {
+  const reportLimit = Math.min(Math.max(Number(limits.limit || 20), 1), 50);
   const [events, trees, volunteers, lands, users] = await Promise.all([
-    db.Event.find().lean(),
-    db.Tree.find().populate('sponsor_id', 'name organization_name').populate('planted_by', 'name').lean(),
-    db.EventVolunteer.find().populate('user_id', 'name').populate('event_id', 'event_id location').lean(),
+    db.Event.find().sort({ created_at: -1 }).limit(reportLimit).lean(),
+    db.Tree.find().sort({ created_at: -1 }).limit(reportLimit).populate('sponsor_id', 'name organization_name').populate('planted_by', 'name').lean(),
+    db.EventVolunteer.find().sort({ requested_at: -1 }).limit(reportLimit).populate('user_id', 'name').populate('event_id', 'event_id location').lean(),
     db.Land.find().lean(),
     db.User.find().lean(),
   ]);
@@ -122,6 +137,9 @@ export const getReports = async () => {
       users: users.length,
       organizations: users.filter((user) => user.account_type === 'Organization').length,
       donors: users.filter((user) => user.role === 'Sponsor').length,
+    },
+    pagination: {
+      report_limit: reportLimit,
     },
   };
 };

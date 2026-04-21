@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import Sidebar from './Sidebar';
 import api from '../services/api';
 import { useResponsive } from '../hooks/useResponsive';
+import PaginationControls from '../components/PaginationControls';
+import { DEFAULT_PAGE_SIZE, getPaginationParams, normalizePaginatedResponse } from '../services/pagination';
 
 const cardStyle = {
   background: 'white',
@@ -14,30 +16,57 @@ const cardStyle = {
 const AdminDashboard = () => {
   const [dashboard, setDashboard] = useState(null);
   const [users, setUsers] = useState([]);
+  const [usersPagination, setUsersPagination] = useState(null);
   const [reports, setReports] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [usersPage, setUsersPage] = useState(1);
   const { isMobile, isTablet } = useResponsive();
 
-  const loadData = useCallback(async () => {
+  const fetchUsers = useCallback(async (page) => {
     try {
-      const [dashboardRes, usersRes, reportsRes] = await Promise.all([
-        api.get('/admin/dashboard'),
-        api.get('/admin/users'),
-        api.get('/admin/reports'),
-      ]);
-      setDashboard(dashboardRes.data);
-      setUsers(usersRes.data);
-      setReports(reportsRes.data);
+      const usersRes = await api.get('/admin/users', {
+        params: getPaginationParams(page, DEFAULT_PAGE_SIZE),
+      });
+      const normalizedUsers = normalizePaginatedResponse(usersRes.data);
+      setUsers(normalizedUsers.items);
+      setUsersPagination(normalizedUsers.pagination);
     } catch (error) {
-      console.error('AdminDashboard loadData failed:', error);
+      console.error('AdminDashboard fetchUsers failed:', error);
     } finally {
-      setLoading(false);
+      setUsersLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    const loadInitialData = async () => {
+      try {
+        const [dashboardRes, reportsRes] = await Promise.all([
+          api.get('/admin/dashboard'),
+          api.get('/admin/reports'),
+        ]);
+        setDashboard(dashboardRes.data);
+        setReports(reportsRes.data);
+      } catch (error) {
+        console.error('AdminDashboard loadInitialData failed:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadInitialData();
+  }, [fetchUsers]);
+
+  useEffect(() => {
+    if (loading) return;
+    setUsersLoading(true);
+    fetchUsers(usersPage);
+  }, [fetchUsers, loading, usersPage]);
+
+  const handleUsersPageChange = (nextPage) => {
+    if (nextPage < 1 || nextPage === usersPage) return;
+    setUsersPage(nextPage);
+  };
 
   if (loading) {
     return (
@@ -93,7 +122,7 @@ const AdminDashboard = () => {
             <h2 style={{ margin: 0, color: '#163126', fontSize: isMobile ? '22px' : '26px' }}>User Management</h2>
             <p style={{ margin: '8px 0 18px', color: '#52796f' }}>All user types across the platform.</p>
             <div style={{ display: 'grid', gap: '12px' }}>
-              {users.slice(0, 10).map((user) => (
+              {users.map((user) => (
                 <div
                   key={user._id || user.id}
                   style={{
@@ -117,6 +146,11 @@ const AdminDashboard = () => {
                 </div>
               ))}
             </div>
+            <PaginationControls
+              pagination={usersPagination}
+              onPageChange={handleUsersPageChange}
+              loading={loading || usersLoading}
+            />
           </div>
 
           <div style={{ display: 'grid', gap: '22px' }}>

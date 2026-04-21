@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import JoinEventModal from './JoinEventModal';
 import api from '../services/api';
+import { confirmAction, promptText, showError, showSuccess } from '../services/dialogs';
 
 const EventDetail = () => {
   const { id } = useParams();
@@ -22,7 +23,7 @@ const EventDetail = () => {
       setEvent(res.data);
     } catch (err) {
       console.error(err);
-      alert('Event not found');
+      await showError('Event not found', 'This event is no longer available.');
       navigate('/dashboard');
     } finally {
       setLoading(false);
@@ -45,44 +46,50 @@ const EventDetail = () => {
   const handleAccept = async (requestId) => {
     try {
       await api.post(`/events/requests/${requestId}/accept`);
-      alert('✅ Request accepted!');
+      await showSuccess('Request accepted');
       fetchRequests();
       fetchEventDetail();
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed');
+      showError('Failed', err.response?.data?.message || 'Request could not be accepted.');
     }
   };
 
   const handleReject = async (requestId) => {
-    const reason = prompt('Rejection reason (optional):');
+    const { isConfirmed, value } = await promptText(
+      'Reject request',
+      'Rejection reason (optional)',
+      'Add a short explanation'
+    );
+    if (!isConfirmed) return;
     try {
-      await api.post(`/events/requests/${requestId}/reject`, { reason });
-      alert('Request rejected');
+      await api.post(`/events/requests/${requestId}/reject`, { reason: value });
+      await showSuccess('Request rejected');
       fetchRequests();
       fetchEventDetail();
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed');
+      showError('Failed', err.response?.data?.message || 'Request could not be rejected.');
     }
   };
 
   const handleAdvancePhase = async () => {
     try {
       const res = await api.post(`/events/${id}/advance`);
-      alert(`Event advanced to: ${res.data.event.current_phase}`);
+      await showSuccess('Event advanced', res.data.event.current_phase);
       fetchEventDetail();
     } catch (err) {
-      alert(err.response?.data?.message || 'Cannot advance');
+      showError('Cannot advance', err.response?.data?.message || 'This event cannot be advanced right now.');
     }
   };
 
   const handleDelete = async () => {
-    if (!confirm('Delete this event? All requests will be cancelled.')) return;
+    const result = await confirmAction('Delete this event?', 'All requests will be cancelled.', 'Delete event');
+    if (!result.isConfirmed) return;
     try {
       await api.delete(`/events/${id}`);
-      alert('Event deleted');
+      await showSuccess('Event deleted');
       navigate('/my-events');
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed');
+      showError('Failed', err.response?.data?.message || 'Event could not be deleted.');
     }
   };
 

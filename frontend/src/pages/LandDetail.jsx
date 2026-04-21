@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import api from '../services/api';
+import { confirmAction, showError, showSuccess } from '../services/dialogs';
 
 const LandDetail = () => {
   const { id } = useParams();
@@ -19,7 +20,7 @@ const LandDetail = () => {
       setLand(res.data);
     } catch (err) {
       console.error(err);
-      alert('Land not found');
+      await showError('Land not found', 'This land record is no longer available.');
       navigate('/my-land');
     } finally {
       setLoading(false);
@@ -31,13 +32,14 @@ const LandDetail = () => {
   }, [fetchLandDetail]);
 
   const handleDelete = async () => {
-    if (!confirm('Delete this land? This action cannot be undone.')) return;
+    const result = await confirmAction('Delete this land?', 'This action cannot be undone.', 'Delete land');
+    if (!result.isConfirmed) return;
     try {
       await api.delete(`/lands/${id}`);
-      alert('Land deleted');
+      await showSuccess('Land deleted');
       navigate('/my-land');
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to delete');
+      showError('Failed to delete', err.response?.data?.message || 'Land could not be deleted.');
     }
   };
 

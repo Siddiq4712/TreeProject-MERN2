@@ -30,5 +30,8 @@ const treeTaskSchema = new mongoose.Schema(
   }
 );
 
+treeTaskSchema.index({ tree_id: 1, completed_at: -1 });
+treeTaskSchema.index({ volunteer_id: 1, completed_at: -1 });
+
 const TreeTask = mongoose.model('TreeTask', treeTaskSchema);
 export default TreeTask;

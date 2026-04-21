@@ -1,5 +1,6 @@
 import db from '../models/index.js';
 import { generatePublicId } from '../utils/idGenerator.js';
+import { createPaginatedResponse } from '../utils/pagination.js';
 
 const logTracking = async (tree, actorId, actionType, title, notes = '', metadata = {}) =>
   db.PlantTracking.create({
@@ -75,54 +76,117 @@ export const createHistoricalTree = async (treeData, userId) => {
   return newTree;
 };
 
-export const getAllTrees = async () => {
-  const trees = await db.Tree.find()
-    .populate('sponsor_id', 'name')
-    .populate('planted_by', 'name')
-    .populate('event_id', 'event_id location')
-    .populate('land_id', 'name')
-    .sort({ created_at: -1 })
-    .lean();
-
-  for (let tree of trees) {
-    tree.sponsor = tree.sponsor_id;
-    tree.planter = tree.planted_by;
-    tree.event = tree.event_id;
-    tree.land = tree.land_id;
-    tree.tasks = await db.TreeTask.find({ tree_id: tree._id }).lean();
+const attachTreeListDetails = async (trees, includeVolunteers = false) => {
+  if (trees.length === 0) {
+    return trees;
   }
 
-  return trees;
+  const treeIds = trees.map((tree) => tree._id);
+  const taskQuery = db.TreeTask.find({ tree_id: { $in: treeIds } }).sort({ completed_at: -1 });
+
+  if (includeVolunteers) {
+    taskQuery.populate('volunteer_id', 'name');
+  }
+
+  const tasks = await taskQuery.lean();
+  const tasksByTreeId = new Map();
+
+  for (const task of tasks) {
+    const key = String(task.tree_id);
+    const normalizedTask = includeVolunteers ? { ...task, volunteer: task.volunteer_id } : task;
+    if (!tasksByTreeId.has(key)) {
+      tasksByTreeId.set(key, []);
+    }
+    tasksByTreeId.get(key).push(normalizedTask);
+  }
+
+  return trees.map((tree) => ({
+    ...tree,
+    sponsor: tree.sponsor_id,
+    planter: tree.planted_by,
+    event: tree.event_id,
+    land: tree.land_id,
+    tasks: tasksByTreeId.get(String(tree._id)) || [],
+  }));
 };
 
-export const getMyTrees = async (userId) => {
+const buildTrackedTreeCount = async (query) => {
+  const [trackedCount] = await db.Tree.aggregate([
+    { $match: query },
+    {
+      $lookup: {
+        from: 'treetasks',
+        localField: '_id',
+        foreignField: 'tree_id',
+        as: 'tasks',
+      },
+    },
+    { $match: { 'tasks.0': { $exists: true } } },
+    { $count: 'count' },
+  ]);
+
+  return trackedCount?.count || 0;
+};
+
+const buildTreeSummary = async (query) => {
+  const [total, healthy, mature, tracked] = await Promise.all([
+    db.Tree.countDocuments(query),
+    db.Tree.countDocuments({ ...query, survival_status: 'Healthy' }),
+    db.Tree.countDocuments({ ...query, growth_status: 'Mature' }),
+    buildTrackedTreeCount(query),
+  ]);
+
+  return {
+    total,
+    healthy,
+    mature,
+    tracked,
+  };
+};
+
+const getTreesPage = async (query, pagination, includeVolunteers = false) => {
+  const [trees, total, summary] = await Promise.all([
+    db.Tree.find(query)
+      .populate('sponsor_id', 'name')
+      .populate('planted_by', 'name')
+      .populate('event_id', 'event_id location')
+      .populate('land_id', 'name')
+      .sort({ created_at: -1 })
+      .skip(pagination.skip)
+      .limit(pagination.limit)
+      .lean(),
+    db.Tree.countDocuments(query),
+    buildTreeSummary(query),
+  ]);
+
+  const items = await attachTreeListDetails(trees, includeVolunteers);
+
+  return {
+    ...createPaginatedResponse({
+      items,
+      page: pagination.page,
+      limit: pagination.limit,
+      total,
+    }),
+    summary,
+  };
+};
+
+export const getAllTrees = async (pagination) => getTreesPage({}, pagination);
+
+export const getMyTrees = async (userId, pagination) => {
   const taskTreeIds = await db.TreeTask.find({ volunteer_id: userId }).distinct('tree_id');
 
-  const trees = await db.Tree.find({
-    $or: [{ sponsor_id: userId }, { planted_by: userId }, { _id: { $in: taskTreeIds } }],
-  })
-    .populate('sponsor_id', 'name')
-    .populate('planted_by', 'name')
-    .populate('event_id', 'event_id location')
-    .populate('land_id', 'name')
-    .sort({ created_at: -1 })
-    .lean();
-
-  for (let tree of trees) {
-    tree.sponsor = tree.sponsor_id;
-    tree.planter = tree.planted_by;
-    tree.event = tree.event_id;
-    tree.land = tree.land_id;
-    tree.tasks = await db.TreeTask.find({ tree_id: tree._id })
-      .populate('volunteer_id', 'name')
-      .lean();
-    tree.tasks = tree.tasks.map((t) => ({ ...t, volunteer: t.volunteer_id }));
-  }
-
-  return trees;
+  return getTreesPage(
+    {
+      $or: [{ sponsor_id: userId }, { planted_by: userId }, { _id: { $in: taskTreeIds } }],
+    },
+    pagination,
+    true
+  );
 };
 
-export const getTreesByFilter = async (userId, filter) => {
+export const getTreesByFilter = async (userId, filter, pagination) => {
   let query = {};
 
   if (filter === 'volunteered') {
@@ -136,21 +200,7 @@ export const getTreesByFilter = async (userId, filter) => {
     query = { is_historical: true, planted_by: userId };
   }
 
-  const trees = await db.Tree.find(query)
-    .populate('sponsor_id', 'name')
-    .populate('planted_by', 'name')
-    .populate('event_id', 'event_id location')
-    .sort({ created_at: -1 })
-    .lean();
-
-  for (let tree of trees) {
-    tree.sponsor = tree.sponsor_id;
-    tree.planter = tree.planted_by;
-    tree.event = tree.event_id;
-    tree.tasks = await db.TreeTask.find({ tree_id: tree._id }).lean();
-  }
-
-  return trees;
+  return getTreesPage(query, pagination, filter === 'volunteered');
 };
 
 export const getTreeById = async (treeId) => {
@@ -287,6 +337,7 @@ export const updateTreeHealth = async (treeId, healthData, actorId = null) => {
   if (healthData.growth_status) tree.growth_status = healthData.growth_status;
   if (healthData.survival_status) tree.survival_status = healthData.survival_status;
   if (healthData.height_cm !== undefined) tree.height_cm = healthData.height_cm;
+  if (healthData.photo_url) tree.photo_url = healthData.photo_url;
 
   await tree.save();
   await logTracking(
@@ -299,7 +350,85 @@ export const updateTreeHealth = async (treeId, healthData, actorId = null) => {
       growth_status: tree.growth_status,
       survival_status: tree.survival_status,
       height_cm: tree.height_cm,
+      evidence_photo_url: healthData.photo_url || null,
     }
   );
   return tree;
+};
+
+export const deleteTree = async (treeId, actorId) => {
+  const tree = await db.Tree.findById(treeId);
+  if (!tree) {
+    throw { status: 404, message: 'Tree not found' };
+  }
+
+  const actorIdString = String(actorId);
+  const canDelete =
+    String(tree.planted_by || '') === actorIdString ||
+    String(tree.sponsor_id || '') === actorIdString;
+
+  if (!canDelete) {
+    const ownedLand = tree.land_id
+      ? await db.Land.findOne({ _id: tree.land_id, owner_id: actorId }).select('_id').lean()
+      : null;
+    const ownsEvent = tree.event_id
+      ? await db.Event.findOne({ _id: tree.event_id, creator_id: actorId }).select('_id').lean()
+      : null;
+
+    if (!ownedLand && !ownsEvent) {
+      throw { status: 403, message: 'You do not have permission to delete this tree' };
+    }
+  }
+
+  await Promise.all([
+    db.TreeTask.deleteMany({ tree_id: treeId }),
+    db.PlantTracking.deleteMany({ tree_id: treeId }),
+    db.EventVolunteer.updateMany(
+      { tree_ids: treeId },
+      { $pull: { tree_ids: treeId } }
+    ),
+    db.Tree.deleteOne({ _id: treeId }),
+  ]);
+
+  if (tree.land_id) {
+    await db.Land.findByIdAndUpdate(tree.land_id, {
+      $inc: { total_trees_planted: -1 },
+    });
+  }
+
+  return { message: 'Tree deleted successfully' };
+};
+
+export const runDailyTreeHealthAudit = async () => {
+  const staleCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const staleTrees = await db.Tree.find({
+    survival_status: 'Healthy',
+    status: { $ne: 'Dead' },
+    $or: [{ last_watered: { $exists: false } }, { last_watered: null }, { last_watered: { $lt: staleCutoff } }],
+  });
+
+  if (staleTrees.length === 0) {
+    return { updated: 0 };
+  }
+
+  await Promise.all(
+    staleTrees.map(async (tree) => {
+      tree.survival_status = 'Weak';
+      await tree.save();
+      await logTracking(
+        tree,
+        null,
+        'HEALTH_AUDIT',
+        'Daily health audit flagged watering risk',
+        'Tree was not watered in the last 24 hours and was marked unhealthy automatically.',
+        {
+          previous_survival_status: 'Healthy',
+          new_survival_status: 'Weak',
+          last_watered: tree.last_watered || null,
+        }
+      );
+    })
+  );
+
+  return { updated: staleTrees.length };
 };

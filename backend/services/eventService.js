@@ -1,6 +1,7 @@
 import db from '../models/index.js';
 import mongoose from 'mongoose';
 import { generatePublicId } from '../utils/idGenerator.js';
+import { createPaginatedResponse } from '../utils/pagination.js';
 
 const logPlantTracking = async (tree, actorId, actionType, title, notes = '', metadata = {}) =>
   db.PlantTracking.create({
@@ -87,6 +88,95 @@ const suggestTreeTypes = ({ tree_species, climate_zone, soil_type, water_availab
   }
 
   return Array.from(suggestions);
+};
+
+const attachEventListDetails = async (events, includeAllRequests = false) => {
+  if (events.length === 0) {
+    return events;
+  }
+
+  const eventIds = events.map((event) => event._id);
+  const volunteerQuery = includeAllRequests
+    ? { event_id: { $in: eventIds } }
+    : { event_id: { $in: eventIds }, request_status: 'ACCEPTED' };
+
+  const [resources, trees, volunteers] = await Promise.all([
+    db.EventResource.find({ event_id: { $in: eventIds } }).lean(),
+    db.Tree.find({ event_id: { $in: eventIds } }).select('tree_id species status event_id').lean(),
+    db.EventVolunteer.find(volunteerQuery).populate('user_id', 'name role email').lean(),
+  ]);
+
+  const resourcesByEventId = new Map();
+  const treesByEventId = new Map();
+  const volunteersByEventId = new Map();
+
+  for (const resource of resources) {
+    const key = String(resource.event_id);
+    if (!resourcesByEventId.has(key)) {
+      resourcesByEventId.set(key, []);
+    }
+    resourcesByEventId.get(key).push(resource);
+  }
+
+  for (const tree of trees) {
+    const key = String(tree.event_id);
+    if (!treesByEventId.has(key)) {
+      treesByEventId.set(key, []);
+    }
+    treesByEventId.get(key).push(tree);
+  }
+
+  for (const volunteer of volunteers) {
+    const key = String(volunteer.event_id);
+    const normalizedVolunteer = { ...volunteer, user: volunteer.user_id };
+    if (!volunteersByEventId.has(key)) {
+      volunteersByEventId.set(key, []);
+    }
+    volunteersByEventId.get(key).push(normalizedVolunteer);
+  }
+
+  return events.map((event) => {
+    const eventVolunteers = volunteersByEventId.get(String(event._id)) || [];
+    const enrichedEvent = {
+      ...event,
+      creator: event.creator_id,
+      land: event.land_id,
+      resources: resourcesByEventId.get(String(event._id)) || [],
+      trees: treesByEventId.get(String(event._id)) || [],
+      eventVolunteers,
+    };
+
+    if (includeAllRequests) {
+      enrichedEvent.pending_requests = eventVolunteers.filter((v) => v.request_status === 'PENDING').length;
+      enrichedEvent.accepted_requests = eventVolunteers.filter((v) => v.request_status === 'ACCEPTED').length;
+      enrichedEvent.rejected_requests = eventVolunteers.filter((v) => v.request_status === 'REJECTED').length;
+    }
+
+    return enrichedEvent;
+  });
+};
+
+const getEventsPage = async (query, pagination, options = {}) => {
+  const { includeAllRequests = false } = options;
+  const [events, total] = await Promise.all([
+    db.Event.find(query)
+      .populate('creator_id', 'name role account_type organization_name')
+      .populate('land_id', 'name address')
+      .sort({ created_at: -1 })
+      .skip(pagination.skip)
+      .limit(pagination.limit)
+      .lean(),
+    db.Event.countDocuments(query),
+  ]);
+
+  const items = await attachEventListDetails(events, includeAllRequests);
+
+  return createPaginatedResponse({
+    items,
+    page: pagination.page,
+    limit: pagination.limit,
+    total,
+  });
 };
 
 // Create Event
@@ -217,67 +307,18 @@ export const createEvent = async (eventData, creatorId) => {
 };
 
 // Get All Events (EXCLUDE creator's own events)
-export const getAllEvents = async (userId) => {
-  const events = await db.Event.find({
-    creator_id: { $ne: userId },
-    is_active: true,
-  })
-    .populate('creator_id', 'name role account_type organization_name')
-    .populate('land_id', 'name address')
-    .sort({ created_at: -1 })
-    .lean();
-
-  // Fetch related data for each event
-  for (let event of events) {
-    event.creator = event.creator_id;
-    event.land = event.land_id;
-
-    event.resources = await db.EventResource.find({ event_id: event._id }).lean();
-    event.trees = await db.Tree.find({ event_id: event._id }).select('tree_id species status').lean();
-    event.eventVolunteers = await db.EventVolunteer.find({
-      event_id: event._id,
-      request_status: 'ACCEPTED',
-    })
-      .populate('user_id', 'name role')
-      .lean();
-
-    event.eventVolunteers = event.eventVolunteers.map((v) => ({
-      ...v,
-      user: v.user_id,
-    }));
-  }
-
-  return events;
-};
+export const getAllEvents = async (userId, pagination) =>
+  getEventsPage(
+    {
+      creator_id: { $ne: userId },
+      is_active: true,
+    },
+    pagination
+  );
 
 // Get My Created Events
-export const getMyCreatedEvents = async (userId) => {
-  const events = await db.Event.find({ creator_id: userId })
-    .populate('land_id', 'name address')
-    .sort({ created_at: -1 })
-    .lean();
-
-  for (let event of events) {
-    event.land = event.land_id;
-    event.resources = await db.EventResource.find({ event_id: event._id }).lean();
-    event.trees = await db.Tree.find({ event_id: event._id }).select('tree_id species status').lean();
-    event.eventVolunteers = await db.EventVolunteer.find({ event_id: event._id })
-      .populate('user_id', 'name role email')
-      .lean();
-
-    event.eventVolunteers = event.eventVolunteers.map((v) => ({
-      ...v,
-      user: v.user_id,
-    }));
-
-    const volunteers = event.eventVolunteers || [];
-    event.pending_requests = volunteers.filter((v) => v.request_status === 'PENDING').length;
-    event.accepted_requests = volunteers.filter((v) => v.request_status === 'ACCEPTED').length;
-    event.rejected_requests = volunteers.filter((v) => v.request_status === 'REJECTED').length;
-  }
-
-  return events;
-};
+export const getMyCreatedEvents = async (userId, pagination) =>
+  getEventsPage({ creator_id: userId, is_active: { $ne: false } }, pagination, { includeAllRequests: true });
 
 // Get Event By ID
 export const getEventById = async (eventId) => {
@@ -690,6 +731,21 @@ export const deleteEvent = async (eventId, creatorId) => {
   // Soft delete
   event.is_active = false;
   await event.save();
+
+  const eventTrees = await db.Tree.find({ event_id: eventId }).select('_id');
+  const treeIds = eventTrees.map((tree) => tree._id);
+
+  if (treeIds.length > 0) {
+    await Promise.all([
+      db.TreeTask.deleteMany({ tree_id: { $in: treeIds } }),
+      db.PlantTracking.deleteMany({ tree_id: { $in: treeIds } }),
+      db.EventVolunteer.updateMany(
+        { event_id: eventId },
+        { $pull: { tree_ids: { $in: treeIds } } }
+      ),
+      db.Tree.deleteMany({ _id: { $in: treeIds } }),
+    ]);
+  }
 
   // Cancel all pending requests
   await db.EventVolunteer.updateMany(

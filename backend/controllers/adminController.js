@@ -1,4 +1,5 @@
 import * as adminService from '../services/adminService.js';
+import { parsePagination } from '../utils/pagination.js';
 
 export const dashboard = async (req, res) => {
   try {
@@ -12,7 +13,7 @@ export const dashboard = async (req, res) => {
 
 export const users = async (req, res) => {
   try {
-    const data = await adminService.getUsers(req.query);
+    const data = await adminService.getUsers(req.query, parsePagination(req.query));
     res.json(data);
   } catch (error) {
     console.error('adminController.users failed:', error);

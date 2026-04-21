@@ -3,13 +3,23 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/auth-context';
 import { useResponsive } from '../hooks/useResponsive';
 
-const navItems = [
-  { to: '/dashboard', icon: 'fa-compass', label: 'Explore Events' },
-  { to: '/my-events', icon: 'fa-calendar-check', label: 'Event Studio' },
-  { to: '/my-trees', icon: 'fa-tree', label: 'Tree Tracker' },
-  { to: '/my-land', icon: 'fa-mountain', label: 'Land Hub' },
-  { to: '/add-historical-tree', icon: 'fa-history', label: 'Add Old Tree' },
-  { to: '/profile', icon: 'fa-id-badge', label: 'Profile' },
+const navGroups = [
+  {
+    title: 'Workspace',
+    items: [
+      { to: '/dashboard', icon: 'fa-compass', label: 'Explore Events' },
+      { to: '/my-events', icon: 'fa-calendar-check', label: 'Event Studio' },
+      { to: '/my-trees', icon: 'fa-tree', label: 'Tree Tracker' },
+      { to: '/my-land', icon: 'fa-mountain', label: 'Land Hub' },
+    ],
+  },
+  {
+    title: 'Management',
+    items: [
+      { to: '/add-historical-tree', icon: 'fa-history', label: 'Add Old Tree' },
+      { to: '/profile', icon: 'fa-id-badge', label: 'Profile' },
+    ],
+  },
 ];
 
 const Sidebar = () => {
@@ -22,23 +32,47 @@ const Sidebar = () => {
     navigate('/login');
   };
 
-  const visibleNavItems = user?.role === 'Admin'
-    ? [...navItems, { to: '/admin', icon: 'fa-user-shield', label: 'Admin' }]
-    : navItems;
+  const visibleNavGroups =
+    user?.role === 'Admin'
+      ? [
+          ...navGroups,
+          {
+            title: 'Administration',
+            items: [{ to: '/admin', icon: 'fa-user-shield', label: 'Admin Dashboard' }],
+          },
+        ]
+      : navGroups;
+
+  const sidebarWidth = isMobile ? '100%' : isTablet ? '248px' : '288px';
+  const navCardStyle = ({ isActive }) => ({
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    textDecoration: 'none',
+    color: 'white',
+    padding: isMobile ? '12px 14px' : '13px 14px',
+    borderRadius: '18px',
+    background: isActive
+      ? 'linear-gradient(135deg, rgba(74,222,128,0.26), rgba(22,163,74,0.2))'
+      : 'rgba(255,255,255,0.03)',
+    border: isActive ? '1px solid rgba(134,239,172,0.24)' : '1px solid rgba(255,255,255,0.05)',
+    boxShadow: isActive ? '0 16px 36px rgba(8, 28, 21, 0.22)' : 'none',
+    transition: 'all 0.2s ease',
+  });
 
   return (
     <aside
       style={{
-        width: isMobile ? '100%' : isTablet ? '240px' : '280px',
+        width: sidebarWidth,
         minHeight: isMobile ? 'auto' : '100vh',
         background:
-          'radial-gradient(circle at top, rgba(134,239,172,0.18), transparent 26%), linear-gradient(180deg, #081c15 0%, #0f2f24 45%, #1b4332 100%)',
+          'radial-gradient(circle at top, rgba(134,239,172,0.18), transparent 26%), linear-gradient(180deg, #071a13 0%, #0d281f 42%, #173a2c 100%)',
         color: 'white',
         position: isMobile ? 'relative' : 'fixed',
         inset: isMobile ? 'auto' : '0 auto 0 0',
         display: 'flex',
         flexDirection: 'column',
-        padding: isMobile ? '14px 12px 12px' : '24px 18px 18px',
+        padding: isMobile ? '14px 12px 12px' : '22px 16px 18px',
         fontFamily: "'Segoe UI', sans-serif",
         boxShadow: '24px 0 60px rgba(6, 18, 12, 0.14)',
         overflowY: 'auto',
@@ -48,27 +82,27 @@ const Sidebar = () => {
       <div
         style={{
           padding: '18px',
-          borderRadius: '24px',
-          background: 'rgba(255,255,255,0.08)',
+          borderRadius: '26px',
+          background: 'linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04))',
           border: '1px solid rgba(255,255,255,0.1)',
           marginBottom: '18px',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-            <div
-              style={{
-                width: isMobile ? '42px' : '48px',
-                height: isMobile ? '42px' : '48px',
-                borderRadius: '16px',
+          <div
+            style={{
+              width: isMobile ? '42px' : '48px',
+              height: isMobile ? '42px' : '48px',
+              borderRadius: '16px',
               display: 'grid',
               placeItems: 'center',
               background: 'linear-gradient(135deg, #4ade80, #16a34a)',
               boxShadow: '0 14px 30px rgba(74, 222, 128, 0.25)',
-                fontSize: isMobile ? '18px' : '22px',
-              }}
-            >
-              <i className="fas fa-seedling"></i>
-            </div>
+              fontSize: isMobile ? '18px' : '22px',
+            }}
+          >
+            <i className="fas fa-seedling"></i>
+          </div>
           <div>
             <div style={{ fontSize: isMobile ? '18px' : '22px', fontWeight: 800, letterSpacing: '-0.02em' }}>TreeNadu</div>
             <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
@@ -86,52 +120,53 @@ const Sidebar = () => {
           }}
         >
           <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.62)', marginBottom: '6px' }}>Signed in as</div>
-          <div style={{ fontSize: isMobile ? '14px' : '16px', fontWeight: 700 }}>{user?.organization_name || user?.name || 'Tree Member'}</div>
-          <div style={{ fontSize: '13px', color: '#bbf7d0', marginTop: '4px' }}>
+          <div style={{ fontSize: isMobile ? '14px' : '16px', fontWeight: 700, lineHeight: 1.35 }}>
+            {user?.organization_name || user?.name || 'Tree Member'}
+          </div>
+          <div style={{ fontSize: '13px', color: '#bbf7d0', marginTop: '4px', lineHeight: 1.35 }}>
             {user?.role || 'Volunteer'} · {user?.account_type || 'Individual'}
           </div>
         </div>
       </div>
 
-      <div style={{ padding: '0 8px 10px', fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.46)' }}>
-        Workspace
-      </div>
-
-      <nav style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1, minHeight: 0 }}>
-        {visibleNavItems.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            style={({ isActive }) => ({
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
-              textDecoration: 'none',
-              color: 'white',
-              padding: '14px 16px',
-              borderRadius: '18px',
-              background: isActive ? 'linear-gradient(135deg, rgba(74,222,128,0.22), rgba(22,163,74,0.18))' : 'transparent',
-              border: isActive ? '1px solid rgba(134,239,172,0.18)' : '1px solid transparent',
-              boxShadow: isActive ? '0 12px 30px rgba(8, 28, 21, 0.18)' : 'none',
-              transition: 'all 0.2s ease',
-            })}
+      <nav style={{ display: 'flex', flexDirection: 'column', gap: '14px', flex: 1, minHeight: 0 }}>
+        {visibleNavGroups.map((group) => (
+          <section
+            key={group.title}
+            style={{
+              padding: '10px',
+              borderRadius: '22px',
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.05)',
+            }}
           >
-            <span
-              style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '14px',
-                display: 'grid',
-                placeItems: 'center',
-                background: 'rgba(255,255,255,0.1)',
-                color: '#d9f99d',
-                flexShrink: 0,
-              }}
-            >
-              <i className={`fas ${item.icon}`}></i>
-            </span>
-            <span style={{ fontWeight: 600, fontSize: isMobile ? '13px' : '15px' }}>{item.label}</span>
-          </NavLink>
+            <div style={{ padding: '2px 8px 10px', fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.46)' }}>
+              {group.title}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {group.items.map((item) => (
+                <NavLink key={item.to} to={item.to} style={navCardStyle}>
+                  <span
+                    style={{
+                      width: '40px',
+                      height: '40px',
+                      borderRadius: '14px',
+                      display: 'grid',
+                      placeItems: 'center',
+                      background: 'rgba(255,255,255,0.1)',
+                      color: '#d9f99d',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <i className={`fas ${item.icon}`}></i>
+                  </span>
+                  <span style={{ fontWeight: 600, fontSize: isMobile ? '13px' : '15px', lineHeight: 1.25 }}>
+                    {item.label}
+                  </span>
+                </NavLink>
+              ))}
+            </div>
+          </section>
         ))}
       </nav>
 
@@ -141,7 +176,7 @@ const Sidebar = () => {
           marginTop: '14px',
           width: '100%',
           border: '1px solid rgba(248,250,252,0.14)',
-          background: 'rgba(255,255,255,0.06)',
+          background: 'linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04))',
           color: 'white',
           borderRadius: '18px',
           padding: isMobile ? '12px 14px' : '14px 16px',

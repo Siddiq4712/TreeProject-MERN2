@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { ToastContext } from '../context/toast-context';
 import { useResponsive } from '../hooks/useResponsive';
+import { SELECT_PAGE_SIZE, getPaginationParams, normalizePaginatedResponse } from '../services/pagination';
 
 const fieldStyle = {
   width: '100%',
@@ -66,8 +67,11 @@ const CreateEvent = () => {
 
     const fetchLands = async () => {
       try {
-        const res = await api.get('/lands/mine');
-        setLands(res.data);
+        const res = await api.get('/lands/mine', {
+          params: getPaginationParams(1, SELECT_PAGE_SIZE),
+        });
+        const normalized = normalizePaginatedResponse(res.data);
+        setLands(normalized.items);
       } catch (err) {
         console.error('CreateEvent fetchLands failed:', err);
       }

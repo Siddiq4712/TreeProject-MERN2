@@ -44,5 +44,8 @@ const landActivitySchema = new mongoose.Schema(
   }
 );
 
+landActivitySchema.index({ land_id: 1, created_at: -1 });
+landActivitySchema.index({ user_id: 1, created_at: -1 });
+
 const LandActivity = mongoose.model('LandActivity', landActivitySchema);
 export default LandActivity;

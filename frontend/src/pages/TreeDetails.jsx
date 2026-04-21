@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
+import { confirmAction, showError, showSuccess } from '../services/dialogs';
 
 const TreeDetails = () => {
   const { id } = useParams();
@@ -8,6 +9,13 @@ const TreeDetails = () => {
   const [tree, setTree] = useState(null);
   const [loading, setLoading] = useState(true);
   const [taskLoading, setTaskLoading] = useState(false);
+  const [healthForm, setHealthForm] = useState({
+    growth_status: '',
+    survival_status: '',
+    height_cm: '',
+    photo_url: '',
+  });
+  const [healthLoading, setHealthLoading] = useState(false);
 
   // Helper to get ID (handles both MongoDB _id and SQL id)
   const getId = (item) => item?._id || item?.id;
@@ -27,16 +35,62 @@ const TreeDetails = () => {
     fetchTree();
   }, [fetchTree]);
 
+  useEffect(() => {
+    if (!tree) return;
+    setHealthForm({
+      growth_status: tree.growth_status || 'Seedling',
+      survival_status: tree.survival_status || 'Healthy',
+      height_cm: tree.height_cm ?? 0,
+      photo_url: tree.photo_url || '',
+    });
+  }, [tree]);
+
   const handleTask = async (taskType) => {
     setTaskLoading(true);
     try {
       await api.post(`/trees/${id}/task`, { task_type: taskType });
-      alert(`✅ ${taskType} completed!`);
+      await showSuccess(`${taskType} completed`);
       fetchTree();
     } catch (err) {
-      alert('Error: ' + (err.response?.data?.message || 'Failed'));
+      showError('Task failed', err.response?.data?.message || 'Action could not be completed.');
     } finally {
       setTaskLoading(false);
+    }
+  };
+
+  const handleHealthUpdate = async (e) => {
+    e.preventDefault();
+    setHealthLoading(true);
+    try {
+      await api.put(`/trees/${id}/health`, {
+        growth_status: healthForm.growth_status,
+        survival_status: healthForm.survival_status,
+        height_cm: Number(healthForm.height_cm || 0),
+        photo_url: healthForm.photo_url || null,
+      });
+      await showSuccess('Tree health updated');
+      fetchTree();
+    } catch (err) {
+      showError('Update failed', err.response?.data?.message || 'Tree health could not be updated.');
+    } finally {
+      setHealthLoading(false);
+    }
+  };
+
+  const handleDeleteTree = async () => {
+    const result = await confirmAction(
+      'Delete this tree?',
+      'This will remove the tree and its tracking history.',
+      'Delete tree'
+    );
+    if (!result.isConfirmed) return;
+
+    try {
+      await api.delete(`/trees/${id}`);
+      await showSuccess('Tree deleted');
+      navigate('/my-trees');
+    } catch (err) {
+      showError('Delete failed', err.response?.data?.message || 'Tree could not be deleted.');
     }
   };
 
@@ -105,6 +159,19 @@ const TreeDetails = () => {
       borderTop: '2px solid #d8f3dc',
       paddingTop: '25px',
     },
+    formGrid: {
+      display: 'grid',
+      gap: '14px',
+      marginTop: '15px',
+    },
+    input: {
+      width: '100%',
+      padding: '12px 14px',
+      borderRadius: '10px',
+      border: '1px solid #d8e2dc',
+      fontSize: '14px',
+      boxSizing: 'border-box',
+    },
     taskBtns: {
       display: 'flex',
       gap: '10px',
@@ -164,6 +231,12 @@ const TreeDetails = () => {
       <div style={styles.container}>
         <button style={styles.backBtn} onClick={() => navigate('/my-trees')}>
           <i className="fas fa-arrow-left"></i> Back to My Trees
+        </button>
+        <button
+          style={{ ...styles.backBtn, borderColor: '#be123c', color: '#be123c', marginLeft: '12px' }}
+          onClick={handleDeleteTree}
+        >
+          <i className="fas fa-trash"></i> Delete Tree
         </button>
 
         <div style={styles.card}>
@@ -249,6 +322,54 @@ const TreeDetails = () => {
               </div>
             </div>
 
+            <div style={styles.taskSection}>
+              <h3 style={{ color: '#1b4332' }}>Health Update With Evidence</h3>
+              <form onSubmit={handleHealthUpdate} style={styles.formGrid}>
+                <select
+                  value={healthForm.growth_status}
+                  onChange={(e) => setHealthForm((current) => ({ ...current, growth_status: e.target.value }))}
+                  style={styles.input}
+                >
+                  <option value="Seedling">Seedling</option>
+                  <option value="Sapling">Sapling</option>
+                  <option value="Young">Young</option>
+                  <option value="Mature">Mature</option>
+                </select>
+                <select
+                  value={healthForm.survival_status}
+                  onChange={(e) => setHealthForm((current) => ({ ...current, survival_status: e.target.value }))}
+                  style={styles.input}
+                >
+                  <option value="Healthy">Healthy</option>
+                  <option value="Weak">Weak</option>
+                  <option value="Critical">Critical</option>
+                  <option value="Dead">Dead</option>
+                </select>
+                <input
+                  type="number"
+                  min="0"
+                  value={healthForm.height_cm}
+                  onChange={(e) => setHealthForm((current) => ({ ...current, height_cm: e.target.value }))}
+                  style={styles.input}
+                  placeholder="Height in cm"
+                />
+                <input
+                  type="url"
+                  value={healthForm.photo_url}
+                  onChange={(e) => setHealthForm((current) => ({ ...current, photo_url: e.target.value }))}
+                  style={styles.input}
+                  placeholder="Photo evidence URL"
+                />
+                <button
+                  type="submit"
+                  disabled={healthLoading}
+                  style={{ ...styles.taskBtn, background: '#1d4ed8', color: 'white', width: 'fit-content' }}
+                >
+                  <i className="fas fa-camera"></i> {healthLoading ? 'Saving...' : 'Save Health Update'}
+                </button>
+              </form>
+            </div>
+
             {/* Task Actions - 5 Step Pipeline */}
             <div style={styles.taskSection}>
               <h3 style={{ color: '#1b4332' }}>
@@ -331,6 +452,13 @@ const TreeDetails = () => {
                       </span>
                     </div>
                     {entry.notes && <p style={{ margin: '8px 0 0', color: '#52796f', fontSize: '14px' }}>{entry.notes}</p>}
+                    {entry.metadata?.evidence_photo_url && (
+                      <img
+                        src={entry.metadata.evidence_photo_url}
+                        alt="Evidence"
+                        style={{ width: '100%', maxWidth: '280px', borderRadius: '12px', marginTop: '10px', border: '1px solid #d8f3dc' }}
+                      />
+                    )}
                     <p style={{ margin: '8px 0 0', color: '#2d6a4f', fontSize: '12px', fontWeight: 'bold' }}>
                       {entry.actor?.organization_name || entry.actor?.name || 'System update'}
                     </p>

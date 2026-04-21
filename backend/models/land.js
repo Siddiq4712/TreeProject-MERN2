@@ -74,5 +74,9 @@ const landSchema = new mongoose.Schema(
   }
 );
 
+landSchema.index({ owner_id: 1, created_at: -1 });
+landSchema.index({ status: 1, created_at: -1 });
+landSchema.index({ water_availability: 1, created_at: -1 });
+
 const Land = mongoose.model('Land', landSchema);
 export default Land;

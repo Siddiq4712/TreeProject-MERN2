@@ -94,5 +94,13 @@ const treeSchema = new mongoose.Schema(
   }
 );
 
+treeSchema.index({ planted_by: 1, created_at: -1 });
+treeSchema.index({ sponsor_id: 1, created_at: -1 });
+treeSchema.index({ status: 1, created_at: -1 });
+treeSchema.index({ survival_status: 1, created_at: -1 });
+treeSchema.index({ event_id: 1, created_at: -1 });
+treeSchema.index({ land_id: 1, created_at: -1 });
+treeSchema.index({ is_historical: 1, planted_by: 1, created_at: -1 });
+
 const Tree = mongoose.model('Tree', treeSchema);
 export default Tree;

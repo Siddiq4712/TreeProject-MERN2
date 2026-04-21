@@ -96,5 +96,9 @@ const eventVolunteerSchema = new mongoose.Schema(
   }
 );
 
+eventVolunteerSchema.index({ event_id: 1, request_status: 1, requested_at: -1 });
+eventVolunteerSchema.index({ user_id: 1, requested_at: -1 });
+eventVolunteerSchema.index({ event_id: 1, user_id: 1 }, { unique: true });
+
 const EventVolunteer = mongoose.model('EventVolunteer', eventVolunteerSchema);
 export default EventVolunteer;

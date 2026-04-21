@@ -1,4 +1,33 @@
 import db from '../models/index.js';
+import { createPaginatedResponse } from '../utils/pagination.js';
+
+const attachLandListSummaries = async (lands) => {
+  if (lands.length === 0) {
+    return lands;
+  }
+
+  const landIds = lands.map((land) => land._id);
+  const [treeCounts, eventCounts] = await Promise.all([
+    db.Tree.aggregate([
+      { $match: { land_id: { $in: landIds } } },
+      { $group: { _id: '$land_id', count: { $sum: 1 } } },
+    ]),
+    db.Event.aggregate([
+      { $match: { land_id: { $in: landIds } } },
+      { $group: { _id: '$land_id', count: { $sum: 1 } } },
+    ]),
+  ]);
+
+  const treeCountMap = new Map(treeCounts.map((entry) => [String(entry._id), entry.count]));
+  const eventCountMap = new Map(eventCounts.map((entry) => [String(entry._id), entry.count]));
+
+  return lands.map((land) => ({
+    ...land,
+    owner: land.owner_id,
+    tree_count: treeCountMap.get(String(land._id)) || 0,
+    event_count: eventCountMap.get(String(land._id)) || 0,
+  }));
+};
 
 export const createLand = async (landData, ownerId) => {
   // Create the land document
@@ -32,30 +61,46 @@ export const createLand = async (landData, ownerId) => {
 };
 
 
-export const getAllLands = async () => {
-  const lands = await db.Land.find()
-    .populate('owner_id', 'name')
-    .sort({ created_at: -1 })
-    .lean();
+export const getAllLands = async (pagination) => {
+  const [lands, total] = await Promise.all([
+    db.Land.find()
+      .populate('owner_id', 'name')
+      .sort({ created_at: -1 })
+      .skip(pagination.skip)
+      .limit(pagination.limit)
+      .lean(),
+    db.Land.countDocuments(),
+  ]);
 
-  for (let land of lands) {
-    land.owner = land.owner_id;
-    land.trees = await db.Tree.find({ land_id: land._id }).select('species status survival_status').lean();
-    land.events = await db.Event.find({ land_id: land._id }).select('event_id location tree_count current_phase').lean();
-  }
+  const items = await attachLandListSummaries(lands);
 
-  return lands;
+  return createPaginatedResponse({
+    items,
+    page: pagination.page,
+    limit: pagination.limit,
+    total,
+  });
 };
 
-export const getMyLands = async (userId) => {
-  const lands = await db.Land.find({ owner_id: userId }).sort({ created_at: -1 }).lean();
+export const getMyLands = async (userId, pagination) => {
+  const query = { owner_id: userId };
+  const [lands, total] = await Promise.all([
+    db.Land.find(query)
+      .sort({ created_at: -1 })
+      .skip(pagination.skip)
+      .limit(pagination.limit)
+      .lean(),
+    db.Land.countDocuments(query),
+  ]);
 
-  for (let land of lands) {
-    land.trees = await db.Tree.find({ land_id: land._id }).select('species status survival_status').lean();
-    land.events = await db.Event.find({ land_id: land._id }).select('event_id location tree_count current_phase').lean();
-  }
+  const items = await attachLandListSummaries(lands);
 
-  return lands;
+  return createPaginatedResponse({
+    items,
+    page: pagination.page,
+    limit: pagination.limit,
+    total,
+  });
 };
 
 // Get Land Details with ALL related data

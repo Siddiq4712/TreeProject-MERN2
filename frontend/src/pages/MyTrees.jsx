@@ -1,8 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import api from '../services/api';
 import { useResponsive } from '../hooks/useResponsive';
+import PaginationControls from '../components/PaginationControls';
+import { DEFAULT_PAGE_SIZE, getPaginationParams, normalizePaginatedResponse } from '../services/pagination';
+import { confirmAction, showError, showSuccess } from '../services/dialogs';
 
 const tabs = [
   { key: 'all', label: 'All Trees' },
@@ -13,35 +16,69 @@ const tabs = [
 ];
 
 const MyTrees = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [trees, setTrees] = useState([]);
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState(searchParams.get('filter') || 'all');
   const [loading, setLoading] = useState(true);
+  const [pagination, setPagination] = useState(null);
+  const [summary, setSummary] = useState(null);
   const navigate = useNavigate();
   const { isMobile, isTablet } = useResponsive();
+  const page = Number(searchParams.get('page') || 1);
+  const latestRequestRef = useRef(0);
 
   const getId = (item) => item?._id || item?.id;
 
   const fetchTrees = useCallback(async () => {
+    const requestId = latestRequestRef.current + 1;
+    latestRequestRef.current = requestId;
     setLoading(true);
     try {
-      const url = filter === 'all' ? '/trees/mine' : `/trees/mine?filter=${filter}`;
-      const res = await api.get(url);
-      setTrees(res.data);
+      const res = await api.get('/trees/mine', {
+        params: getPaginationParams(page, DEFAULT_PAGE_SIZE, filter === 'all' ? {} : { filter }),
+      });
+      if (latestRequestRef.current !== requestId) {
+        return;
+      }
+      const normalized = normalizePaginatedResponse(res.data);
+      setTrees(normalized.items);
+      setPagination(normalized.pagination);
+      setSummary(res.data?.summary || null);
     } catch (err) {
       console.error('MyTrees fetchTrees failed:', err);
     } finally {
-      setLoading(false);
+      if (latestRequestRef.current === requestId) {
+        setLoading(false);
+      }
     }
-  }, [filter]);
+  }, [filter, page]);
 
   useEffect(() => {
     fetchTrees();
   }, [fetchTrees]);
 
-  const totalTrees = trees.length;
-  const healthyTrees = trees.filter((tree) => tree.survival_status === 'Healthy').length;
-  const trackedTrees = trees.filter((tree) => (tree.tasks?.length || 0) > 0).length;
-  const matureTrees = trees.filter((tree) => tree.growth_status === 'Mature').length;
+  useEffect(() => {
+    const nextFilter = searchParams.get('filter') || 'all';
+    if (nextFilter !== filter) {
+      setFilter(nextFilter);
+    }
+  }, [searchParams, filter]);
+
+  const updateQuery = (nextFilter, nextPage = 1) => {
+    const nextParams = {};
+    if (nextFilter && nextFilter !== 'all') {
+      nextParams.filter = nextFilter;
+    }
+    if (nextPage > 1) {
+      nextParams.page = String(nextPage);
+    }
+    setSearchParams(nextParams);
+  };
+
+  const totalTrees = summary?.total ?? pagination?.total ?? 0;
+  const healthyTrees = summary?.healthy ?? 0;
+  const trackedTrees = summary?.tracked ?? 0;
+  const matureTrees = summary?.mature ?? 0;
 
   const getProgress = (status) => {
     const progress = {
@@ -81,6 +118,43 @@ const MyTrees = () => {
       Dead: '#475569',
     };
     return tones[status] || '#64748b';
+  };
+
+  const handleDeleteTree = async (treeId) => {
+    const result = await confirmAction(
+      'Delete this tree?',
+      'This will remove the tree and its tracking history.',
+      'Delete tree'
+    );
+    if (!result.isConfirmed) return;
+
+    try {
+      await api.delete(`/trees/${treeId}`);
+      setTrees((current) => current.filter((tree) => getId(tree) !== treeId));
+      setPagination((current) =>
+        current
+          ? {
+              ...current,
+              total: Math.max(0, current.total - 1),
+            }
+          : current
+      );
+      setSummary((current) =>
+        current
+          ? {
+              ...current,
+              total: Math.max(0, current.total - 1),
+              healthy: Math.max(0, current.healthy - 1),
+              tracked: Math.max(0, current.tracked - 1),
+              mature: current.mature,
+            }
+          : current
+      );
+      await showSuccess('Tree deleted');
+      fetchTrees();
+    } catch (err) {
+      showError('Delete failed', err.response?.data?.message || 'Tree could not be deleted.');
+    }
   };
 
   return (
@@ -123,13 +197,19 @@ const MyTrees = () => {
               </div>
             ))}
           </div>
+          <div style={{ marginTop: '16px', color: 'rgba(255,255,255,0.72)', fontSize: '13px' }}>
+            Showing {trees.length} trees on this page · Page {pagination?.page || 1} of {pagination?.totalPages || 1}
+          </div>
         </section>
 
         <section style={{ marginTop: '24px', display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
           {tabs.map((tab) => (
             <button
               key={tab.key}
-              onClick={() => setFilter(tab.key)}
+              onClick={() => {
+                setFilter(tab.key);
+                updateQuery(tab.key, 1);
+              }}
               style={{
                 border: filter === tab.key ? 'none' : '1px solid #d3e6d9',
                 background: filter === tab.key ? 'linear-gradient(135deg, #2d6a4f, #1b4332)' : 'white',
@@ -181,7 +261,7 @@ const MyTrees = () => {
                     borderRadius: '28px',
                     overflow: 'hidden',
                     border: '1px solid #e8f3eb',
-                    boxShadow: '0 20px 55px rgba(15, 47, 36, 0.07)',
+                    boxShadow: '0 24px 60px rgba(15, 47, 36, 0.08)',
                   }}
                 >
                   <div
@@ -197,6 +277,10 @@ const MyTrees = () => {
                         <h3 style={{ margin: '8px 0 6px', fontSize: isMobile ? '20px' : '24px', color: '#163126' }}>{tree.species}</h3>
                         <div style={{ color: '#52796f' }}>
                           {tree.land?.name || tree.event?.location || 'Unassigned location'}
+                        </div>
+                        <div style={{ marginTop: '10px', display: 'inline-flex', gap: '8px', alignItems: 'center', color: '#2d6a4f', fontSize: '12px', fontWeight: 700 }}>
+                          <i className="fas fa-seedling"></i>
+                          {tree.is_historical ? 'Historical record' : 'Active tracking'}
                         </div>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-end' }}>
@@ -262,9 +346,26 @@ const MyTrees = () => {
                         padding: '14px',
                         fontWeight: 800,
                         cursor: 'pointer',
+                        boxShadow: '0 14px 30px rgba(15, 47, 36, 0.14)',
                       }}
                     >
                       Open Tree Detail
+                    </button>
+                    <button
+                      onClick={() => handleDeleteTree(getId(tree))}
+                      style={{
+                        marginTop: '10px',
+                        width: '100%',
+                        border: '1px solid #fecaca',
+                        background: '#fff1f2',
+                        color: '#be123c',
+                        borderRadius: '18px',
+                        padding: '14px',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Delete Tree
                     </button>
                   </div>
                 </article>
@@ -272,6 +373,12 @@ const MyTrees = () => {
             })}
           </div>
         )}
+
+        <PaginationControls
+          pagination={pagination}
+          onPageChange={(nextPage) => updateQuery(filter, nextPage)}
+          loading={loading}
+        />
       </main>
     </div>
   );

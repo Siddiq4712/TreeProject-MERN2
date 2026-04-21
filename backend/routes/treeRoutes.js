@@ -11,5 +11,6 @@ router.get('/mine', authenticateToken, treeController.getMine);
 router.get('/:id', authenticateToken, treeController.getById);
 router.post('/:id/task', authenticateToken, treeController.addTask);
 router.put('/:id/health', authenticateToken, treeController.updateHealth);
+router.delete('/:id', authenticateToken, treeController.remove);
 
 export default router;

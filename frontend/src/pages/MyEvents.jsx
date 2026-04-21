@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import api from '../services/api';
+import PaginationControls from '../components/PaginationControls';
+import { DEFAULT_PAGE_SIZE, getPaginationParams, normalizePaginatedResponse } from '../services/pagination';
+import { confirmAction, promptText, showError, showSuccess } from '../services/dialogs';
 
 const MyEvents = () => {
   const [events, setEvents] = useState([]);
@@ -9,6 +12,8 @@ const MyEvents = () => {
   const [requests, setRequests] = useState([]);
   const [showRequests, setShowRequests] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState(null);
   const [requestFilter, setRequestFilter] = useState('PENDING');
   const navigate = useNavigate();
 
@@ -17,17 +22,26 @@ const MyEvents = () => {
 
   useEffect(() => {
     fetchMyEvents();
-  }, []);
+  }, [page]);
 
   const fetchMyEvents = async () => {
     try {
-      const res = await api.get('/events/my-created');
-      setEvents(res.data);
+      const res = await api.get('/events/my-created', {
+        params: getPaginationParams(page, DEFAULT_PAGE_SIZE),
+      });
+      const normalized = normalizePaginatedResponse(res.data);
+      setEvents(normalized.items);
+      setPagination(normalized.pagination);
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handlePageChange = (nextPage) => {
+    if (nextPage < 1 || nextPage === page) return;
+    setPage(nextPage);
   };
 
   const fetchRequests = async (eventId) => {
@@ -48,46 +62,66 @@ const MyEvents = () => {
   const handleAccept = async (requestId) => {
     try {
       await api.post(`/events/requests/${requestId}/accept`);
-      alert('✅ Request accepted!');
+      await showSuccess('Request accepted');
       fetchRequests(getId(selectedEvent));
       fetchMyEvents();
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to accept');
+      showError('Failed to accept', err.response?.data?.message || 'Request could not be accepted.');
     }
   };
 
   const handleReject = async (requestId) => {
-    const reason = prompt('Rejection reason (optional):');
+    const { isConfirmed, value } = await promptText(
+      'Reject request',
+      'Rejection reason (optional)',
+      'Add a short explanation'
+    );
+    if (!isConfirmed) return;
+
     try {
-      await api.post(`/events/requests/${requestId}/reject`, { reason });
-      alert('Request rejected');
+      await api.post(`/events/requests/${requestId}/reject`, { reason: value });
+      await showSuccess('Request rejected');
       fetchRequests(getId(selectedEvent));
       fetchMyEvents();
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to reject');
+      showError('Failed to reject', err.response?.data?.message || 'Request could not be rejected.');
     }
   };
 
   const handleDelete = async (eventId) => {
-    if (!confirm('Are you sure you want to delete this event? All pending requests will be cancelled.')) {
+    const result = await confirmAction(
+      'Delete this event?',
+      'All pending requests will be cancelled.',
+      'Delete event'
+    );
+    if (!result.isConfirmed) {
       return;
     }
     try {
       await api.delete(`/events/${eventId}`);
-      alert('Event deleted');
+      setEvents((current) => current.filter((event) => getId(event) !== eventId));
+      setPagination((current) =>
+        current
+          ? {
+              ...current,
+              total: Math.max(0, current.total - 1),
+            }
+          : current
+      );
+      await showSuccess('Event deleted');
       fetchMyEvents();
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to delete');
+      showError('Failed to delete', err.response?.data?.message || 'Event could not be deleted.');
     }
   };
 
   const handleAdvancePhase = async (eventId) => {
     try {
       const res = await api.post(`/events/${eventId}/advance`);
-      alert(`Event advanced to: ${res.data.event.current_phase}`);
+      await showSuccess('Event advanced', res.data.event.current_phase);
       fetchMyEvents();
     } catch (err) {
-      alert(err.response?.data?.message || 'Cannot advance phase');
+      showError('Cannot advance phase', err.response?.data?.message || 'This event cannot be advanced right now.');
     }
   };
 
@@ -137,18 +171,19 @@ const MyEvents = () => {
     },
     eventCard: {
       background: 'white',
-      borderRadius: '20px',
+      borderRadius: '26px',
       overflow: 'hidden',
-      boxShadow: '0 10px 25px rgba(0,0,0,0.08)',
+      boxShadow: '0 20px 55px rgba(15,47,36,0.08)',
+      border: '1px solid #e8f3eb',
       cursor: 'pointer',
     },
     cardHeader: {
-      padding: '20px',
-      background: 'linear-gradient(135deg, #2d6a4f, #1b4332)',
+      padding: '22px',
+      background: 'radial-gradient(circle at top right, rgba(187,247,208,0.24), transparent 26%), linear-gradient(135deg, #153f2f, #0f2f24)',
       color: 'white',
     },
     cardBody: {
-      padding: '20px',
+      padding: '22px',
     },
     statsRow: {
       gap: '15px',
@@ -156,9 +191,9 @@ const MyEvents = () => {
     },
     statBox: {
       flex: 1,
-      padding: '12px',
-      background: '#f8f9fa',
-      borderRadius: '10px',
+      padding: '14px',
+      background: '#f5fbf7',
+      borderRadius: '16px',
       textAlign: 'center',
     },
     requestBadge: {
@@ -287,6 +322,9 @@ const MyEvents = () => {
                         <p style={{ margin: 0, fontSize: '14px' }}>
                           🌳 {ev.tree_count} Trees • {formatDate(ev.date_time)}
                         </p>
+                        <p style={{ margin: '10px 0 0', fontSize: '12px', color: 'rgba(255,255,255,0.78)', maxWidth: '420px', lineHeight: 1.5 }}>
+                          {ev.description || 'A planting mission with volunteer, funding, and readiness tracking.'}
+                        </p>
                       </div>
                       <span
                         style={{
@@ -389,6 +427,8 @@ const MyEvents = () => {
             })}
           </div>
         )}
+
+        <PaginationControls pagination={pagination} onPageChange={handlePageChange} loading={loading} />
       </div>
 
       {/* Request Management Modal */}

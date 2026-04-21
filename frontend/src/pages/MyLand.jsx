@@ -3,10 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import api from '../services/api';
 import { useResponsive } from '../hooks/useResponsive';
+import PaginationControls from '../components/PaginationControls';
+import { DEFAULT_PAGE_SIZE, getPaginationParams, normalizePaginatedResponse } from '../services/pagination';
 
 const MyLand = () => {
   const [lands, setLands] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState(null);
   const navigate = useNavigate();
   const { isMobile, isTablet } = useResponsive();
 
@@ -14,22 +18,31 @@ const MyLand = () => {
 
   const fetchLands = useCallback(async () => {
     try {
-      const res = await api.get('/lands/mine');
-      setLands(res.data);
+      const res = await api.get('/lands/mine', {
+        params: getPaginationParams(page, DEFAULT_PAGE_SIZE),
+      });
+      const normalized = normalizePaginatedResponse(res.data);
+      setLands(normalized.items);
+      setPagination(normalized.pagination);
     } catch (err) {
       console.error('MyLand fetchLands failed:', err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page]);
 
   useEffect(() => {
     fetchLands();
   }, [fetchLands]);
 
-  const totalLands = lands.length;
-  const totalTrees = lands.reduce((sum, land) => sum + (land.trees?.length || 0), 0);
-  const totalEvents = lands.reduce((sum, land) => sum + (land.events?.length || 0), 0);
+  const handlePageChange = (nextPage) => {
+    if (nextPage < 1 || nextPage === page) return;
+    setPage(nextPage);
+  };
+
+  const totalLands = pagination?.total || 0;
+  const totalTrees = lands.reduce((sum, land) => sum + Number(land.tree_count || 0), 0);
+  const totalEvents = lands.reduce((sum, land) => sum + Number(land.event_count || 0), 0);
   const wateredReady = lands.filter((land) => land.water_availability).length;
 
   const getStatusTone = (status) => {
@@ -99,6 +112,9 @@ const MyLand = () => {
               </div>
             ))}
           </div>
+          <div style={{ marginTop: '16px', color: 'rgba(255,255,255,0.72)', fontSize: '13px' }}>
+            Showing {lands.length} lands on this page · Page {pagination?.page || 1} of {pagination?.totalPages || 1}
+          </div>
         </section>
 
         <section style={{ marginTop: '26px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -155,7 +171,7 @@ const MyLand = () => {
                     borderRadius: '28px',
                     overflow: 'hidden',
                     border: '1px solid #e8f3eb',
-                    boxShadow: '0 20px 55px rgba(15, 47, 36, 0.07)',
+                    boxShadow: '0 24px 60px rgba(15, 47, 36, 0.08)',
                   }}
                 >
                   <div
@@ -172,6 +188,10 @@ const MyLand = () => {
                         <div style={{ color: '#52796f', lineHeight: 1.5 }}>
                           <i className="fas fa-map-marker-alt" style={{ marginRight: '8px', color: '#2d6a4f' }}></i>
                           {land.address}
+                        </div>
+                        <div style={{ marginTop: '10px', display: 'inline-flex', gap: '8px', alignItems: 'center', color: '#2d6a4f', fontSize: '12px', fontWeight: 700 }}>
+                          <i className="fas fa-layer-group"></i>
+                          Portfolio-ready land profile
                         </div>
                       </div>
                       <span
@@ -194,8 +214,8 @@ const MyLand = () => {
                       {[
                         ['Area', land.area_sqft ? `${land.area_sqft} sq.ft` : 'Not set'],
                         ['Soil', land.soil_type || 'Unknown'],
-                        ['Trees', land.trees?.length || 0],
-                        ['Events', land.events?.length || 0],
+                        ['Trees', land.tree_count || 0],
+                        ['Events', land.event_count || 0],
                       ].map(([label, value]) => (
                         <div key={label} style={{ background: '#f5fbf7', borderRadius: '18px', padding: '14px' }}>
                           <div style={{ fontSize: '12px', color: '#52796f' }}>{label}</div>
@@ -230,6 +250,7 @@ const MyLand = () => {
                         padding: '14px',
                         fontWeight: 800,
                         cursor: 'pointer',
+                        boxShadow: '0 14px 30px rgba(15, 47, 36, 0.14)',
                       }}
                     >
                       Open Land Detail
@@ -240,6 +261,8 @@ const MyLand = () => {
             })}
           </div>
         )}
+
+        <PaginationControls pagination={pagination} onPageChange={handlePageChange} loading={loading} />
       </main>
     </div>
   );
