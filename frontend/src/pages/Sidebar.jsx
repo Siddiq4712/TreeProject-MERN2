@@ -129,7 +129,18 @@ const Sidebar = () => {
         </div>
       </div>
 
-      <nav style={{ display: 'flex', flexDirection: 'column', gap: '14px', flex: 1, minHeight: 0 }}>
+      <nav
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '14px',
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto',
+          paddingRight: isMobile ? '0' : '4px',
+          paddingBottom: '6px',
+        }}
+      >
         {visibleNavGroups.map((group) => (
           <section
             key={group.title}
@@ -170,24 +181,31 @@ const Sidebar = () => {
         ))}
       </nav>
 
-      <button
-        onClick={handleLogout}
+      <div
         style={{
           marginTop: '14px',
-          width: '100%',
-          border: '1px solid rgba(248,250,252,0.14)',
-          background: 'linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04))',
-          color: 'white',
-          borderRadius: '18px',
-          padding: isMobile ? '12px 14px' : '14px 16px',
-          cursor: 'pointer',
-          fontWeight: 700,
-          fontSize: isMobile ? '13px' : '14px',
+          paddingTop: '6px',
+          flexShrink: 0,
         }}
       >
-        <i className="fas fa-sign-out-alt" style={{ marginRight: '10px' }}></i>
-        Logout
-      </button>
+        <button
+          onClick={handleLogout}
+          style={{
+            width: '100%',
+            border: '1px solid rgba(248,250,252,0.14)',
+            background: 'linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04))',
+            color: 'white',
+            borderRadius: '18px',
+            padding: isMobile ? '12px 14px' : '14px 16px',
+            cursor: 'pointer',
+            fontWeight: 700,
+            fontSize: isMobile ? '13px' : '14px',
+          }}
+        >
+          <i className="fas fa-sign-out-alt" style={{ marginRight: '10px' }}></i>
+          Logout
+        </button>
+      </div>
     </aside>
   );
 };
