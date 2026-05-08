@@ -11,6 +11,7 @@ const JoinEventModal = ({ event, onClose, onSuccess }) => {
   const [procurementType, setProcurementType] = useState('Fund');
   const [contributionAmount, setContributionAmount] = useState('');
   const [contributionQuantity, setContributionQuantity] = useState('');
+  const [volunteerHours, setVolunteerHours] = useState('');
   const [socialLink, setSocialLink] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -24,7 +25,7 @@ const JoinEventModal = ({ event, onClose, onSuccess }) => {
     { id: 'Planting', label: 'Planting Saplings', icon: 'fa-seedling', karma: 20, phase: 'PLANTING' },
     { id: 'Watering', label: 'Watering Trees', icon: 'fa-tint', karma: 10, phase: 'WATERING' },
     { id: 'Fertilizing', label: 'Adding Fertilizer', icon: 'fa-flask', karma: 10, phase: 'FERTILIZING' },
-    { id: 'GuardFixing', label: 'Fixing Tree Guards', icon: 'fa-shield-alt', karma: 15, phase: 'GUARDING' },
+    { id: 'TreeGuard', label: 'Fixing Tree Guards', icon: 'fa-shield-alt', karma: 15, phase: 'GUARDING' },
   ];
 
   // Soft Tasks (Non-blocking - karma only)
@@ -87,6 +88,12 @@ const JoinEventModal = ({ event, onClose, onSuccess }) => {
       return;
     }
 
+    if (contributionType === 'Labor' && (!volunteerHours || Number(volunteerHours) <= 0)) {
+      setError('Please enter your expected volunteer hours');
+      setLoading(false);
+      return;
+    }
+
     if (contributionType === 'Capital') {
       if (procurementType === 'Fund' && (!contributionAmount || contributionAmount <= 0)) {
         setError('Please enter a valid funding amount');
@@ -112,6 +119,7 @@ const JoinEventModal = ({ event, onClose, onSuccess }) => {
         procurement_type: contributionType === 'Capital' ? procurementType : null,
         contribution_amount: procurementType === 'Fund' ? parseFloat(contributionAmount) : 0,
         contribution_quantity: procurementType === 'Procure' ? parseInt(contributionQuantity) : 0,
+        volunteer_hours: contributionType === 'Labor' ? Number(volunteerHours) : 0,
         social_media_link: socialLink || null,
       });
 
@@ -546,6 +554,21 @@ const JoinEventModal = ({ event, onClose, onSuccess }) => {
                   </div>
                 </div>
               )}
+
+              <div style={styles.section}>
+                <div style={styles.sectionTitle}>
+                  <i className="fas fa-clock"></i> Expected Volunteer Hours
+                </div>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  placeholder="How many hours will you contribute?"
+                  value={volunteerHours}
+                  onChange={(e) => setVolunteerHours(e.target.value)}
+                  style={{ ...styles.input, marginTop: 0 }}
+                />
+              </div>
             </>
           )}
 

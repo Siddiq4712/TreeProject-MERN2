@@ -1,5 +1,5 @@
 import { useContext, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import api from '../services/api';
 import { ToastContext } from '../context/toast-context';
 import { useResponsive } from '../hooks/useResponsive';
@@ -17,6 +17,8 @@ const fieldStyle = {
 };
 
 const AddHistoricalTree = () => {
+  const { id } = useParams();
+  const isEditMode = Boolean(id);
   const navigate = useNavigate();
   const { showToast } = useContext(ToastContext);
   const { isMobile } = useResponsive();
@@ -49,6 +51,40 @@ const AddHistoricalTree = () => {
     fetchLands();
   }, []);
 
+  useEffect(() => {
+    if (!isEditMode) {
+      return;
+    }
+
+    const fetchTree = async () => {
+      try {
+        const res = await api.get(`/trees/${id}`);
+        const tree = res.data;
+        setSpecies(tree.species || '');
+        setLandId(tree.land?._id || tree.land_id || '');
+        setPlantedDate(
+          tree.historical_planted_date
+            ? new Date(tree.historical_planted_date).toISOString().slice(0, 10)
+            : tree.planted_date
+            ? new Date(tree.planted_date).toISOString().slice(0, 10)
+            : ''
+        );
+        setGrowthStatus(tree.growth_status || 'Sapling');
+        setSurvivalStatus(tree.survival_status || 'Healthy');
+        setHeightCm(tree.height_cm ?? '');
+        setHasTreeGuard(Boolean(tree.has_tree_guard));
+        setPhotoUrl(tree.photo_url || '');
+        setNotes(tree.notes || '');
+      } catch (err) {
+        console.error('AddHistoricalTree fetchTree failed:', err);
+        showToast('Unable to load tree for editing.', 'error');
+        navigate('/my-trees');
+      }
+    };
+
+    fetchTree();
+  }, [id, isEditMode, navigate, showToast]);
+
   const getId = (item) => item?._id || item?.id;
 
   const handleSubmit = async (e) => {
@@ -65,7 +101,7 @@ const AddHistoricalTree = () => {
     }
 
     try {
-      await api.post('/trees/historical', {
+      const payload = {
         species: species.trim(),
         land_id: landId || null,
         planted_date: plantedDate || null,
@@ -75,10 +111,16 @@ const AddHistoricalTree = () => {
         has_tree_guard: hasTreeGuard,
         photo_url: photoUrl || null,
         notes: notes || null,
-      });
+      };
 
-      showToast('Historical tree added successfully.', 'success');
-      navigate('/my-trees?filter=historical');
+      if (isEditMode) {
+        await api.put(`/trees/${id}`, payload);
+      } else {
+        await api.post('/trees/historical', payload);
+      }
+
+      showToast(isEditMode ? 'Tree updated successfully.' : 'Historical tree added successfully.', 'success');
+      navigate(isEditMode ? `/tree/${id}` : '/my-trees?filter=historical');
     } catch (err) {
       console.error('AddHistoricalTree handleSubmit failed:', err);
       const message = err.response?.data?.message || 'Failed to add tree.';
@@ -130,7 +172,9 @@ const AddHistoricalTree = () => {
             <div style={{ fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'rgba(255,255,255,0.72)' }}>
               Historical Tree Intake
             </div>
-            <h1 style={{ margin: '12px 0 0', fontSize: '42px', lineHeight: 1.08 }}>Record older trees that were planted before this application started tracking them.</h1>
+            <h1 style={{ margin: '12px 0 0', fontSize: '42px', lineHeight: 1.08 }}>
+              {isEditMode ? 'Edit a tracked tree and keep its field information current.' : 'Record older trees that were planted before this application started tracking them.'}
+            </h1>
             <p style={{ margin: '14px 0 0', color: 'rgba(255,255,255,0.78)', lineHeight: 1.7, fontSize: '17px' }}>
               Use this form for legacy plantations, already-grown trees, or manually documented field records. These trees appear immediately in your Tree Tracker.
             </p>
@@ -159,7 +203,7 @@ const AddHistoricalTree = () => {
             border: '1px solid #e8f3eb',
           }}
         >
-          <h2 style={{ margin: 0, color: '#163126', fontSize: '32px' }}>Add Historical Tree</h2>
+          <h2 style={{ margin: 0, color: '#163126', fontSize: '32px' }}>{isEditMode ? 'Edit Tree' : 'Add Historical Tree'}</h2>
           <p style={{ margin: '8px 0 24px', color: '#52796f', lineHeight: 1.6 }}>
             Capture the current known state of the tree so your dashboard has a complete plantation history.
           </p>
@@ -279,7 +323,7 @@ const AddHistoricalTree = () => {
                 opacity: loading ? 0.7 : 1,
               }}
             >
-              {loading ? 'Saving Historical Tree...' : 'Save Historical Tree'}
+              {loading ? (isEditMode ? 'Saving Tree...' : 'Saving Historical Tree...') : (isEditMode ? 'Save Tree Changes' : 'Save Historical Tree')}
             </button>
           </form>
         </section>

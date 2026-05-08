@@ -1,5 +1,35 @@
 import mongoose from 'mongoose';
 
+const contactPersonSchema = new mongoose.Schema(
+  {
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 255,
+    },
+    organization: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 255,
+    },
+    phone: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 30,
+    },
+    email: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 255,
+    },
+  },
+  { _id: false }
+);
+
 const eventSchema = new mongoose.Schema(
   {
     event_id: {
@@ -13,11 +43,19 @@ const eventSchema = new mongoose.Schema(
       required: true,
       maxlength: 255,
     },
+    pin_code: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 10,
+    },
     description: {
       type: String,
+      required: true,
     },
     location_code: {
       type: String,
+      required: true,
       maxlength: 30,
     },
     date_time: {
@@ -33,11 +71,13 @@ const eventSchema = new mongoose.Schema(
     },
     tree_species: {
       type: String,
+      required: true,
       maxlength: 255,
     },
     budget: {
       type: Number,
-      default: 0,
+      required: true,
+      min: 0,
     },
     role: {
       type: String,
@@ -56,12 +96,12 @@ const eventSchema = new mongoose.Schema(
     initiation_type: {
       type: String,
       enum: ['Volunteer-Led', 'Sponsor-Led'],
-      default: 'Volunteer-Led',
+      required: true,
     },
     approval_mode: {
       type: String,
       enum: ['Auto', 'Manual'],
-      default: 'Manual',
+      required: true,
     },
     labor_goal: {
       type: Number,
@@ -108,7 +148,7 @@ const eventSchema = new mongoose.Schema(
     land_allocation_status: {
       type: String,
       enum: ['ALLOCATED', 'NEEDED'],
-      default: 'NEEDED',
+      required: true,
     },
     proposed_land: {
       latitude: Number,
@@ -126,14 +166,16 @@ const eventSchema = new mongoose.Schema(
     },
     can_run_without_sponsorship: {
       type: Boolean,
-      default: false,
+      required: true,
     },
     expected_volunteers: {
       type: Number,
-      default: 0,
+      required: true,
+      min: 0,
     },
     maintenance_plan: {
       type: String,
+      required: true,
       maxlength: 1000,
     },
     community_engagement_strategy: {
@@ -142,19 +184,19 @@ const eventSchema = new mongoose.Schema(
     },
     media_coverage: {
       type: Boolean,
-      default: false,
+      required: true,
     },
     social_media_handles: {
       type: [String],
       default: [],
     },
     contact_person: {
-      name: String,
-      phone: String,
-      email: String,
+      type: contactPersonSchema,
+      required: true,
     },
     climate_zone: {
       type: String,
+      required: true,
       maxlength: 100,
     },
     suggested_tree_types: {
@@ -164,7 +206,7 @@ const eventSchema = new mongoose.Schema(
     procurement_status: {
       type: String,
       enum: ['PLANNED', 'IN_PROGRESS', 'READY'],
-      default: 'PLANNED',
+      required: true,
     },
   },
   {

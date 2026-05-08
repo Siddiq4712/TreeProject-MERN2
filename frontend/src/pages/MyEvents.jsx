@@ -44,9 +44,9 @@ const MyEvents = () => {
     setPage(nextPage);
   };
 
-  const fetchRequests = async (eventId) => {
+  const fetchRequests = async (eventId, status = requestFilter) => {
     try {
-      const res = await api.get(`/events/${eventId}/requests?status=${requestFilter}`);
+      const res = await api.get(`/events/${eventId}/requests?status=${status}`);
       setRequests(res.data);
     } catch (err) {
       console.error(err);
@@ -56,7 +56,7 @@ const MyEvents = () => {
   const handleManageRequests = (event) => {
     setSelectedEvent(event);
     setShowRequests(true);
-    fetchRequests(getId(event));
+    fetchRequests(getId(event), requestFilter);
   };
 
   const handleAccept = async (requestId) => {
@@ -393,6 +393,15 @@ const MyEvents = () => {
                     {/* Action Buttons */}
                     <div className="detail-action-row" style={styles.actionBtns}>
                       <button
+                        style={{ ...styles.actionBtn, background: '#f8f9fa', color: '#1b4332', border: '1px solid #d3e6d9' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/edit-event/${eventId}`);
+                        }}
+                      >
+                        <i className="fas fa-edit"></i> Edit
+                      </button>
+                      <button
                         style={{ ...styles.actionBtn, background: '#2d6a4f', color: 'white' }}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -461,7 +470,7 @@ const MyEvents = () => {
                     }}
                     onClick={() => {
                       setRequestFilter(status);
-                      fetchRequests(getId(selectedEvent));
+                      fetchRequests(getId(selectedEvent), status);
                     }}
                   >
                     {status}

@@ -1,6 +1,7 @@
 import db from '../models/index.js';
 import { generatePublicId } from '../utils/idGenerator.js';
 import { createPaginatedResponse } from '../utils/pagination.js';
+import { syncLandDerivedState } from './landService.js';
 
 const logTracking = async (tree, actorId, actionType, title, notes = '', metadata = {}) =>
   db.PlantTracking.create({
@@ -14,12 +15,80 @@ const logTracking = async (tree, actorId, actionType, title, notes = '', metadat
     metadata,
   });
 
+const getOwnedLand = async (landId, actorId) => {
+  if (!landId) {
+    return null;
+  }
+
+  const land = await db.Land.findById(landId).lean();
+  if (!land) {
+    throw { status: 404, message: 'Land not found' };
+  }
+
+  if (String(land.owner_id) !== String(actorId)) {
+    throw { status: 403, message: 'You can only manage trees for your own land entries' };
+  }
+
+  return land;
+};
+
+const getOwnedEvent = async (eventId, actorId) => {
+  if (!eventId) {
+    return null;
+  }
+
+  const event = await db.Event.findById(eventId).lean();
+  if (!event) {
+    throw { status: 404, message: 'Event not found' };
+  }
+
+  if (String(event.creator_id) !== String(actorId)) {
+    throw { status: 403, message: 'You can only manage trees for events you created' };
+  }
+
+  return event;
+};
+
+const ensureTreePermission = async (tree, actorId) => {
+  const actorIdString = String(actorId);
+  const canUpdate =
+    String(tree.planted_by || '') === actorIdString ||
+    String(tree.sponsor_id || '') === actorIdString;
+
+  if (canUpdate) {
+    return;
+  }
+
+  const ownedLand = tree.land_id
+    ? await db.Land.findOne({ _id: tree.land_id, owner_id: actorId }).select('_id').lean()
+    : null;
+  const ownsEvent = tree.event_id
+    ? await db.Event.findOne({ _id: tree.event_id, creator_id: actorId }).select('_id').lean()
+    : null;
+
+  if (!ownedLand && !ownsEvent) {
+    throw { status: 403, message: 'You do not have permission to modify this tree' };
+  }
+};
+
 export const createTree = async (treeData, userId) => {
+  const [land, event] = await Promise.all([
+    getOwnedLand(treeData.land_id || null, userId),
+    getOwnedEvent(treeData.event_id || null, userId),
+  ]);
+
+  if (land && event?.land_id && String(event.land_id) !== String(land._id)) {
+    throw { status: 400, message: 'Selected land does not match the event land' };
+  }
+
+  const resolvedLandId = land?._id || event?.land_id || null;
   const newTree = await db.Tree.create({
     tree_id: generatePublicId('TREE'),
-    species: treeData.species,
-    event_id: treeData.event_id || null,
-    land_id: treeData.land_id || null,
+    species: String(treeData.species || '').trim(),
+    event_id: event?._id || treeData.event_id || null,
+    land_id: resolvedLandId,
+    latitude: land?.latitude || null,
+    longitude: land?.longitude || null,
     sponsor_id: treeData.sponsor_id || null,
     planted_by: userId,
     status: 'Planned',
@@ -42,11 +111,14 @@ export const createTree = async (treeData, userId) => {
 
 // Add Historical Tree
 export const createHistoricalTree = async (treeData, userId) => {
+  const land = await getOwnedLand(treeData.land_id || null, userId);
   const newTree = await db.Tree.create({
     tree_id: generatePublicId('TREE'),
-    species: treeData.species,
-    land_id: treeData.land_id || null,
-    sponsor_id: treeData.sponsor_id || userId,
+    species: String(treeData.species || '').trim(),
+    land_id: land?._id || null,
+    latitude: land?.latitude || null,
+    longitude: land?.longitude || null,
+    sponsor_id: treeData.sponsor_id || null,
     planted_by: userId,
     planted_date: treeData.planted_date || new Date(),
     status: 'Growing',
@@ -72,6 +144,10 @@ export const createHistoricalTree = async (treeData, userId) => {
       height_cm: newTree.height_cm,
     }
   );
+
+  if (newTree.land_id) {
+    await syncLandDerivedState(newTree.land_id);
+  }
 
   return newTree;
 };
@@ -237,6 +313,8 @@ export const addTreeTask = async (treeId, taskType, volunteerId, notes) => {
     throw { status: 404, message: 'Tree not found' };
   }
 
+  await ensureTreePermission(tree, volunteerId);
+
   const wasUnplanted = !tree.planted_date;
 
   // Create task
@@ -334,6 +412,8 @@ export const updateTreeHealth = async (treeId, healthData, actorId = null) => {
     throw { status: 404, message: 'Tree not found' };
   }
 
+  await ensureTreePermission(tree, actorId);
+
   if (healthData.growth_status) tree.growth_status = healthData.growth_status;
   if (healthData.survival_status) tree.survival_status = healthData.survival_status;
   if (healthData.height_cm !== undefined) tree.height_cm = healthData.height_cm;
@@ -356,29 +436,91 @@ export const updateTreeHealth = async (treeId, healthData, actorId = null) => {
   return tree;
 };
 
+export const updateTree = async (treeId, updateData, actorId) => {
+  const tree = await db.Tree.findById(treeId);
+  if (!tree) {
+    throw { status: 404, message: 'Tree not found' };
+  }
+
+  await ensureTreePermission(tree, actorId);
+
+  if (!String(updateData.species || '').trim()) {
+    throw { status: 400, message: 'Tree species is required' };
+  }
+
+  if (updateData.land_id) {
+    const land = await db.Land.findById(updateData.land_id).lean();
+    if (!land) {
+      throw { status: 400, message: 'Selected land not found' };
+    }
+  }
+
+  const previousLandId = tree.land_id ? String(tree.land_id) : null;
+
+  const allowedFields = [
+    'species',
+    'land_id',
+    'growth_status',
+    'survival_status',
+    'height_cm',
+    'photo_url',
+    'notes',
+    'has_tree_guard',
+    'historical_planted_date',
+    'planted_date',
+    'spot_label',
+    'latitude',
+    'longitude',
+  ];
+
+  for (const field of allowedFields) {
+    if (updateData[field] !== undefined) {
+      tree[field] = updateData[field];
+    }
+  }
+
+  tree.species = String(updateData.species || '').trim();
+  tree.notes = updateData.notes ? String(updateData.notes).trim() : null;
+  tree.photo_url = updateData.photo_url ? String(updateData.photo_url).trim() : null;
+  tree.land_id = updateData.land_id || null;
+
+  await tree.save();
+  await logTracking(
+    tree,
+    actorId,
+    'HEALTH_UPDATE',
+    'Tree details updated',
+    'Tree profile details were updated from the edit flow.',
+    {
+      species: tree.species,
+      growth_status: tree.growth_status,
+      survival_status: tree.survival_status,
+      height_cm: tree.height_cm,
+      land_id: tree.land_id || null,
+    }
+  );
+
+  const nextLandId = tree.land_id ? String(tree.land_id) : null;
+  if (previousLandId && previousLandId !== nextLandId) {
+    await syncLandDerivedState(previousLandId);
+  }
+  if (nextLandId) {
+    await syncLandDerivedState(nextLandId);
+  }
+
+  return tree;
+};
+
 export const deleteTree = async (treeId, actorId) => {
   const tree = await db.Tree.findById(treeId);
   if (!tree) {
     throw { status: 404, message: 'Tree not found' };
   }
 
-  const actorIdString = String(actorId);
-  const canDelete =
-    String(tree.planted_by || '') === actorIdString ||
-    String(tree.sponsor_id || '') === actorIdString;
+  await ensureTreePermission(tree, actorId);
 
-  if (!canDelete) {
-    const ownedLand = tree.land_id
-      ? await db.Land.findOne({ _id: tree.land_id, owner_id: actorId }).select('_id').lean()
-      : null;
-    const ownsEvent = tree.event_id
-      ? await db.Event.findOne({ _id: tree.event_id, creator_id: actorId }).select('_id').lean()
-      : null;
-
-    if (!ownedLand && !ownsEvent) {
-      throw { status: 403, message: 'You do not have permission to delete this tree' };
-    }
-  }
+  const landId = tree.land_id;
+  const eventId = tree.event_id;
 
   await Promise.all([
     db.TreeTask.deleteMany({ tree_id: treeId }),
@@ -390,10 +532,34 @@ export const deleteTree = async (treeId, actorId) => {
     db.Tree.deleteOne({ _id: treeId }),
   ]);
 
-  if (tree.land_id) {
-    await db.Land.findByIdAndUpdate(tree.land_id, {
-      $inc: { total_trees_planted: -1 },
-    });
+  if (eventId) {
+    const event = await db.Event.findById(eventId);
+    if (event) {
+      const remainingTreeCount = await db.Tree.countDocuments({ event_id: eventId });
+      event.tree_count = remainingTreeCount;
+      await event.save();
+
+      const resourceConfigs = [
+        { type: 'Saplings', required_quantity: remainingTreeCount, required_amount: remainingTreeCount * 20 },
+        { type: 'Fertilizer', required_quantity: remainingTreeCount, required_amount: remainingTreeCount * 5 },
+        { type: 'TreeGuards', required_quantity: remainingTreeCount, required_amount: remainingTreeCount * 10 },
+      ];
+
+      for (const config of resourceConfigs) {
+        const resource = await db.EventResource.findOne({ event_id: eventId, resource_type: config.type });
+        if (!resource) {
+          continue;
+        }
+
+        resource.required_quantity = config.required_quantity;
+        resource.required_amount = config.required_amount;
+        await resource.save();
+      }
+    }
+  }
+
+  if (landId) {
+    await syncLandDerivedState(landId);
   }
 
   return { message: 'Tree deleted successfully' };

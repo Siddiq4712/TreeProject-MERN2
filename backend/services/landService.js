@@ -1,6 +1,47 @@
 import db from '../models/index.js';
 import { createPaginatedResponse } from '../utils/pagination.js';
 
+export const syncLandDerivedState = async (landId) => {
+  if (!landId) {
+    return null;
+  }
+
+  const land = await db.Land.findById(landId);
+  if (!land) {
+    return null;
+  }
+
+  const [activeEventsCount, totalEventsHosted, plantedTreesCount] = await Promise.all([
+    db.Event.countDocuments({
+      land_id: landId,
+      is_active: { $ne: false },
+      current_phase: { $ne: 'COMPLETED' },
+    }),
+    db.Event.countDocuments({
+      land_id: landId,
+      is_active: { $ne: false },
+    }),
+    db.Tree.countDocuments({
+      land_id: landId,
+      planted_date: { $ne: null },
+    }),
+  ]);
+
+  land.total_events_hosted = totalEventsHosted;
+  land.total_trees_planted = plantedTreesCount;
+
+  if (plantedTreesCount > 0) {
+    land.status = 'Active';
+  } else if (activeEventsCount > 0) {
+    land.status = 'Reserved';
+  } else if (land.status !== 'Completed') {
+    land.status = 'Available';
+  }
+
+  await land.save();
+  return land;
+};
+
 const attachLandListSummaries = async (lands) => {
   if (lands.length === 0) {
     return lands;
@@ -313,17 +354,22 @@ export const deleteLand = async (landId, ownerId) => {
     throw { status: 403, message: 'Only land owner can delete' };
   }
 
-  // Check if land has active events
-  const activeEvents = await db.Event.find({
-    land_id: landId,
-    current_phase: { $ne: 'COMPLETED' },
-  });
+  const [linkedEventsCount, linkedTreesCount] = await Promise.all([
+    db.Event.countDocuments({ land_id: landId }),
+    db.Tree.countDocuments({ land_id: landId }),
+  ]);
 
-  if (activeEvents.length > 0) {
-    throw { status: 400, message: 'Cannot delete land with active events' };
+  if (linkedEventsCount > 0 || linkedTreesCount > 0) {
+    throw {
+      status: 400,
+      message: 'Cannot delete land that is still linked to events or trees',
+    };
   }
 
-  await db.Land.findByIdAndDelete(landId);
+  await Promise.all([
+    db.LandActivity.deleteMany({ land_id: landId }),
+    db.Land.findByIdAndDelete(landId),
+  ]);
 
   return { message: 'Land deleted successfully' };
 };

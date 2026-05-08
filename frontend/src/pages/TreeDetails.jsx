@@ -233,6 +233,12 @@ const TreeDetails = () => {
           <i className="fas fa-arrow-left"></i> Back to My Trees
         </button>
         <button
+          style={{ ...styles.backBtn, marginLeft: '12px' }}
+          onClick={() => navigate(`/edit-tree/${id}`)}
+        >
+          <i className="fas fa-edit"></i> Edit Tree
+        </button>
+        <button
           style={{ ...styles.backBtn, borderColor: '#be123c', color: '#be123c', marginLeft: '12px' }}
           onClick={handleDeleteTree}
         >

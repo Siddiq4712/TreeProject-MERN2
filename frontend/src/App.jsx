@@ -122,6 +122,11 @@ function App() {
               <CreateEvent />
             </ProtectedRoute>
           } />
+          <Route path="/edit-event/:id" element={
+            <ProtectedRoute>
+              <CreateEvent />
+            </ProtectedRoute>
+          } />
           <Route path="/event/:id" element={
             <ProtectedRoute>
               <EventDetail />
@@ -152,12 +157,22 @@ function App() {
               <AddLand />
             </ProtectedRoute>
           } />
+          <Route path="/edit-land/:id" element={
+            <ProtectedRoute>
+              <AddLand />
+            </ProtectedRoute>
+          } />
           <Route path="/land/:id" element={
             <ProtectedRoute>
               <LandDetail />
             </ProtectedRoute>
           } />
           <Route path="/add-historical-tree" element={
+            <ProtectedRoute>
+              <AddHistoricalTree />
+            </ProtectedRoute>
+          } />
+          <Route path="/edit-tree/:id" element={
             <ProtectedRoute>
               <AddHistoricalTree />
             </ProtectedRoute>

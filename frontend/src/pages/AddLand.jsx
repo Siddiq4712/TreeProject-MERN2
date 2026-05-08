@@ -1,5 +1,5 @@
-import { useState, useContext } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useContext, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import api from '../services/api';
 import { ToastContext } from '../context/toast-context';
 import { useResponsive } from '../hooks/useResponsive';
@@ -16,6 +16,8 @@ const fieldStyle = {
 };
 
 const AddLand = () => {
+  const { id } = useParams();
+  const isEditMode = Boolean(id);
   const navigate = useNavigate();
   const { showToast } = useContext(ToastContext);
   const { isMobile } = useResponsive();
@@ -31,6 +33,35 @@ const AddLand = () => {
   const [waterAvailability, setWaterAvailability] = useState(false);
   const [waterSource, setWaterSource] = useState('');
   const [description, setDescription] = useState('');
+
+  useEffect(() => {
+    if (!isEditMode) {
+      return;
+    }
+
+    const fetchLand = async () => {
+      try {
+        const res = await api.get(`/lands/${id}`);
+        const land = res.data;
+        setName(land.name || '');
+        setAddress(land.address || '');
+        setLatitude(land.latitude ?? '');
+        setLongitude(land.longitude ?? '');
+        setAreaSqft(land.area_sqft ?? '');
+        setLandType(land.land_type || 'Private');
+        setSoilType(land.soil_type || '');
+        setWaterAvailability(Boolean(land.water_availability));
+        setWaterSource(land.water_source || '');
+        setDescription(land.description || '');
+      } catch (err) {
+        console.error('AddLand fetchLand failed:', err);
+        showToast('Unable to load land for editing.', 'error');
+        navigate('/my-land');
+      }
+    };
+
+    fetchLand();
+  }, [id, isEditMode, navigate, showToast]);
 
   const getLocation = () => {
     if (navigator.geolocation) {
@@ -64,7 +95,7 @@ const AddLand = () => {
     }
 
     try {
-      await api.post('/lands', {
+      const payload = {
         name,
         address,
         latitude: latitude ? parseFloat(latitude) : null,
@@ -75,9 +106,15 @@ const AddLand = () => {
         water_availability: waterAvailability,
         water_source: waterSource || null,
         description: description || null,
-      });
+      };
 
-      showToast('Land added successfully.', 'success');
+      if (isEditMode) {
+        await api.put(`/lands/${id}`, payload);
+      } else {
+        await api.post('/lands', payload);
+      }
+
+      showToast(isEditMode ? 'Land updated successfully.' : 'Land added successfully.', 'success');
       navigate('/my-land');
     } catch (err) {
       console.error('AddLand handleSubmit failed:', err);
@@ -130,7 +167,9 @@ const AddLand = () => {
             <div style={{ fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'rgba(255,255,255,0.7)' }}>
               New Land Intake
             </div>
-            <h1 style={{ margin: '12px 0 0', fontSize: '42px', lineHeight: 1.08 }}>Add a plantation space with the details your future events will need.</h1>
+            <h1 style={{ margin: '12px 0 0', fontSize: '42px', lineHeight: 1.08 }}>
+              {isEditMode ? 'Update this plantation space with the latest land details.' : 'Add a plantation space with the details your future events will need.'}
+            </h1>
             <p style={{ margin: '14px 0 0', color: 'rgba(255,255,255,0.78)', lineHeight: 1.7, fontSize: '17px' }}>
               Capture the land profile, availability, water readiness, and soil conditions so events and trees can be planned properly from day one.
             </p>
@@ -159,7 +198,7 @@ const AddLand = () => {
             border: '1px solid #e8f3eb',
           }}
         >
-          <h2 style={{ margin: 0, color: '#163126', fontSize: '32px' }}>Land Details</h2>
+          <h2 style={{ margin: 0, color: '#163126', fontSize: '32px' }}>{isEditMode ? 'Edit Land Details' : 'Land Details'}</h2>
           <p style={{ margin: '8px 0 24px', color: '#52796f', lineHeight: 1.6 }}>
             Fill in the most important operating details. You can refine the land later from the detail view.
           </p>
@@ -290,7 +329,7 @@ const AddLand = () => {
                 opacity: loading ? 0.7 : 1,
               }}
             >
-              {loading ? 'Saving Land...' : 'Save Land'}
+              {loading ? (isEditMode ? 'Saving Changes...' : 'Saving Land...') : (isEditMode ? 'Save Land Changes' : 'Save Land')}
             </button>
           </form>
         </section>

@@ -164,6 +164,20 @@ export const updateHealth = async (req, res) => {
   }
 };
 
+export const update = async (req, res) => {
+  try {
+    const tree = await treeService.updateTree(req.params.id, req.body, req.user.id);
+    res.json({
+      message: "Tree updated",
+      tree,
+    });
+  } catch (err) {
+    res
+      .status(err.status || 500)
+      .json({ message: err.message || "Server error" });
+  }
+};
+
 export const remove = async (req, res) => {
   try {
     const result = await treeService.deleteTree(req.params.id, req.user.id);

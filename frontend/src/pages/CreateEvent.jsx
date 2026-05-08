@@ -1,7 +1,8 @@
 import { useContext, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import api from '../services/api';
 import { ToastContext } from '../context/toast-context';
+import { AuthContext } from '../context/auth-context';
 import { useResponsive } from '../hooks/useResponsive';
 import { SELECT_PAGE_SIZE, getPaginationParams, normalizePaginatedResponse } from '../services/pagination';
 
@@ -22,17 +23,92 @@ const noLandChoices = [
   'Pre-digging support',
 ];
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_REGEX = /^\+?[0-9\s-]{10,15}$/;
+
+const buildEventId = (pinCode, randomSuffix) => {
+  const normalizedPin = String(pinCode || '').trim();
+  if (!normalizedPin) {
+    return String(randomSuffix);
+  }
+
+  return `${normalizedPin}-${randomSuffix}`;
+};
+
+const parseOptionalNumber = (value) => {
+  if (value === '' || value === null || value === undefined) {
+    return null;
+  }
+
+  const parsedValue = Number(value);
+  return Number.isFinite(parsedValue) ? parsedValue : null;
+};
+
+const formatDateTimeLocal = (value) => {
+  if (!value) {
+    return '';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  const timezoneOffsetMs = date.getTimezoneOffset() * 60 * 1000;
+  return new Date(date.getTime() - timezoneOffsetMs).toISOString().slice(0, 16);
+};
+
+const resolveLandId = (event) => {
+  const landValue = event?.land_id || event?.land;
+
+  if (!landValue) {
+    return '';
+  }
+
+  if (typeof landValue === 'object') {
+    return landValue._id || landValue.id || '';
+  }
+
+  return String(landValue);
+};
+
+const mergeSelectedLand = (existingLands, event) => {
+  const landValue = event?.land_id || event?.land;
+  if (!landValue || typeof landValue !== 'object') {
+    return existingLands;
+  }
+
+  const selectedLandId = landValue._id || landValue.id;
+  if (!selectedLandId) {
+    return existingLands;
+  }
+
+  const alreadyPresent = existingLands.some((land) => String(land._id || land.id) === String(selectedLandId));
+  return alreadyPresent ? existingLands : [landValue, ...existingLands];
+};
+
 const CreateEvent = () => {
+  const { id } = useParams();
+  const isEditMode = Boolean(id);
   const navigate = useNavigate();
   const { showToast } = useContext(ToastContext);
+  const { user } = useContext(AuthContext);
   const { isMobile } = useResponsive();
   const [lands, setLands] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [eventLoading, setEventLoading] = useState(false);
+  const [locationLoading, setLocationLoading] = useState(false);
   const [error, setError] = useState('');
   const [customTreeCount, setCustomTreeCount] = useState('');
+  const [eventRandomSuffix, setEventRandomSuffix] = useState(() => {
+    const first = Math.floor(10000000 + Math.random() * 90000000).toString();
+    const second = Math.floor(10000000 + Math.random() * 90000000).toString();
+    return `${first}${second}`;
+  });
   const [form, setForm] = useState({
-    event_id: 'TN 69 - Loading...',
-    location_code: 'TN 69',
+    event_id: String(eventRandomSuffix),
+    pin_code: '',
+    location_code: '',
     location: 'KOVILPATTAI New Busstand',
     role: 'Volunteer',
     budget: '',
@@ -49,10 +125,10 @@ const CreateEvent = () => {
     expected_volunteers: '',
     tree_species: '',
     maintenance_plan: '',
-    community_engagement_strategy: '',
     media_coverage: true,
     social_media_handles: '',
-    contact_name: '',
+    creator_name: '',
+    organization_name: '',
     contact_phone: '',
     contact_email: '',
     approval_mode: 'Manual',
@@ -62,8 +138,9 @@ const CreateEvent = () => {
   });
 
   useEffect(() => {
-    const random10Digit = Math.floor(1000000000 + Math.random() * 9000000000);
-    setForm((current) => ({ ...current, event_id: `TN 69 - ${random10Digit}` }));
+    if (isEditMode) {
+      return;
+    }
 
     const fetchLands = async () => {
       try {
@@ -78,7 +155,109 @@ const CreateEvent = () => {
     };
 
     fetchLands();
-  }, []);
+  }, [isEditMode]);
+
+  useEffect(() => {
+    if (!isEditMode) {
+      return;
+    }
+
+    const fetchEditDependencies = async () => {
+      try {
+        const [landsRes, eventRes] = await Promise.all([
+          api.get('/lands/mine', {
+            params: getPaginationParams(1, SELECT_PAGE_SIZE),
+          }),
+          api.get(`/events/${id}`),
+        ]);
+
+        const event = eventRes.data;
+        const normalized = normalizePaginatedResponse(landsRes.data);
+        const resolvedLands = mergeSelectedLand(normalized.items, event);
+        setLands(resolvedLands);
+
+        const eventId = String(event.event_id || '');
+        const suffixMatch = eventId.match(/^\d{6}-(\d{16})$/);
+        if (suffixMatch) {
+          setEventRandomSuffix(suffixMatch[1]);
+        }
+
+        const selectedLandId = resolveLandId(event);
+        const selectedEventLand = resolvedLands.find(
+          (land) => String(land._id || land.id) === String(selectedLandId)
+        );
+        const proposedLand = event.proposed_land || {};
+
+        setForm((current) => ({
+          ...current,
+          event_id: eventId || current.event_id,
+          pin_code: event.pin_code || '',
+          location_code: event.location_code || event.pin_code || '',
+          location: event.location || '',
+          role: event.role || 'Volunteer',
+          budget: event.budget ?? '',
+          tree_count: ['10', '100', '200', '500'].includes(String(event.tree_count)) ? String(event.tree_count) : 'Other',
+          land_allocation_status: event.land_allocation_status || 'NEEDED',
+          selected_land_id: selectedLandId,
+          proposed_latitude: proposedLand.latitude ?? selectedEventLand?.latitude ?? '',
+          proposed_longitude: proposedLand.longitude ?? selectedEventLand?.longitude ?? '',
+          proposed_area_sqft: proposedLand.area_sqft ?? selectedEventLand?.area_sqft ?? '',
+          land_support_options: event.land_support_options || [],
+          land_support_other: event.land_support_other || '',
+          can_run_without_sponsorship: event.can_run_without_sponsorship ?? true,
+          date_time: formatDateTimeLocal(event.date_time),
+          expected_volunteers: event.expected_volunteers ?? '',
+          tree_species: event.tree_species || '',
+          maintenance_plan: event.maintenance_plan || '',
+          media_coverage: event.media_coverage ?? true,
+          social_media_handles: (event.social_media_handles || []).join(', '),
+          creator_name: event.contact_person?.name || '',
+          organization_name: event.contact_person?.organization || '',
+          contact_phone: event.contact_person?.phone || '',
+          contact_email: event.contact_person?.email || '',
+          approval_mode: event.approval_mode || 'Manual',
+          initiation_type: event.initiation_type || 'Volunteer-Led',
+          description: event.description || '',
+          climate_zone: event.climate_zone || '',
+        }));
+
+        if (!['10', '100', '200', '500'].includes(String(event.tree_count))) {
+          setCustomTreeCount(String(event.tree_count || ''));
+        }
+      } catch (err) {
+        console.error('CreateEvent fetchEditDependencies failed:', err);
+        showToast('Unable to load event for editing.', 'error');
+        navigate('/my-events');
+      } finally {
+        setEventLoading(false);
+      }
+    };
+
+    setEventLoading(true);
+    fetchEditDependencies();
+  }, [id, isEditMode, navigate, showToast]);
+
+  useEffect(() => {
+    if (isEditMode) {
+      return;
+    }
+
+    setForm((current) => ({
+      ...current,
+      creator_name: user?.name || '',
+      organization_name: user?.organization_name || user?.name || '',
+      contact_phone: user?.phone || '',
+      contact_email: user?.email || '',
+    }));
+  }, [isEditMode, user]);
+
+  useEffect(() => {
+    setForm((current) => ({
+      ...current,
+      location_code: current.pin_code.trim(),
+      event_id: buildEventId(current.pin_code, eventRandomSuffix),
+    }));
+  }, [eventRandomSuffix, form.pin_code]);
 
   const updateField = (key, value) => setForm((current) => ({ ...current, [key]: value }));
 
@@ -93,14 +272,47 @@ const CreateEvent = () => {
       return;
     }
 
+    setLocationLoading(true);
     navigator.geolocation.getCurrentPosition(
-      (position) => {
-        updateField('proposed_latitude', position.coords.latitude.toFixed(6));
-        updateField('proposed_longitude', position.coords.longitude.toFixed(6));
-        showToast('Land coordinates captured.', 'success');
+      async (position) => {
+        const latitude = position.coords.latitude.toFixed(6);
+        const longitude = position.coords.longitude.toFixed(6);
+
+        updateField('proposed_latitude', latitude);
+        updateField('proposed_longitude', longitude);
+
+        try {
+          const response = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}`,
+            {
+              headers: {
+                Accept: 'application/json',
+              },
+            }
+          );
+          const data = await response.json();
+          const postCode = String(data?.address?.postcode || '').replace(/\D/g, '').slice(0, 6);
+
+          if (postCode) {
+            setForm((current) => ({
+              ...current,
+              pin_code: postCode,
+              location: current.location || data?.display_name || '',
+            }));
+            showToast('Location enabled. PIN code captured from your current location.', 'success');
+          } else {
+            showToast('Location found, but PIN code could not be detected. Please enter it manually.', 'error');
+          }
+        } catch (fetchError) {
+          console.error('CreateEvent reverse geocode failed:', fetchError);
+          showToast('Location captured, but PIN code lookup failed. Please enter it manually.', 'error');
+        } finally {
+          setLocationLoading(false);
+        }
       },
       (err) => {
         console.error('CreateEvent getLocation failed:', err);
+        setLocationLoading(false);
         showToast('Unable to retrieve current location.', 'error');
       }
     );
@@ -126,7 +338,47 @@ const CreateEvent = () => {
     setLoading(true);
 
     const treeCount = resolveTreeCount();
-    if (!form.date_time || !treeCount) {
+    const trimmedPinCode = form.pin_code.trim();
+    const trimmedLocation = form.location.trim();
+    const trimmedSpecies = form.tree_species.trim();
+    const trimmedClimateZone = form.climate_zone.trim();
+    const trimmedMaintenancePlan = form.maintenance_plan.trim();
+    const trimmedCreatorName = form.creator_name.trim();
+    const trimmedOrganizationName = form.organization_name.trim();
+    const trimmedContactPhone = form.contact_phone.trim();
+    const trimmedContactEmail = form.contact_email.trim();
+    const trimmedDescription = form.description.trim();
+    const parsedBudget = Number(form.budget);
+    const parsedExpectedVolunteers = Number(form.expected_volunteers);
+    const eventDate = new Date(form.date_time);
+
+    if (!/^\d{6}$/.test(trimmedPinCode)) {
+      const message = 'PIN code must be exactly 6 digits.';
+      setError(message);
+      showToast(message, 'error');
+      setLoading(false);
+      return;
+    }
+
+    if (!/^\d{6}-\d{16}$/.test(form.event_id) || !form.event_id.startsWith(`${trimmedPinCode}-`)) {
+      const message = 'Event ID must match the current PIN code and include a 16-digit unique ID.';
+      setError(message);
+      showToast(message, 'error');
+      setLoading(false);
+      return;
+    }
+
+    const normalizedLocationCode = form.location_code.trim();
+
+    if (normalizedLocationCode !== trimmedPinCode) {
+      const message = 'Location code must match the current PIN code.';
+      setError(message);
+      showToast(message, 'error');
+      setLoading(false);
+      return;
+    }
+
+    if (!form.date_time || !Number.isInteger(treeCount) || treeCount <= 0) {
       const message = 'Event date and valid tree count are required.';
       setError(message);
       showToast(message, 'error');
@@ -134,8 +386,66 @@ const CreateEvent = () => {
       return;
     }
 
-    if (!form.contact_name || !form.contact_phone || !form.contact_email) {
-      const message = 'Contact person name, phone, and email are required.';
+    if (Number.isNaN(eventDate.getTime()) || eventDate <= new Date()) {
+      const message = 'Event date must be a valid future date and time.';
+      setError(message);
+      showToast(message, 'error');
+      setLoading(false);
+      return;
+    }
+
+    if (
+      !trimmedLocation ||
+      !trimmedSpecies ||
+      !trimmedClimateZone ||
+      !trimmedMaintenancePlan ||
+      !trimmedCreatorName ||
+      !trimmedOrganizationName ||
+      !trimmedContactPhone ||
+      !trimmedContactEmail ||
+      !trimmedDescription
+    ) {
+      const message = 'Please fill all required event fields.';
+      setError(message);
+      showToast(message, 'error');
+      setLoading(false);
+      return;
+    }
+
+    if (!Number.isFinite(parsedBudget) || parsedBudget < 0) {
+      const message = 'Sponsorship budget must be a valid non-negative amount.';
+      setError(message);
+      showToast(message, 'error');
+      setLoading(false);
+      return;
+    }
+
+    if (!Number.isInteger(parsedExpectedVolunteers) || parsedExpectedVolunteers < 0) {
+      const message = 'Expected volunteers must be a valid non-negative whole number.';
+      setError(message);
+      showToast(message, 'error');
+      setLoading(false);
+      return;
+    }
+
+    if (!EMAIL_REGEX.test(trimmedContactEmail)) {
+      const message = 'Please enter a valid contact email address.';
+      setError(message);
+      showToast(message, 'error');
+      setLoading(false);
+      return;
+    }
+
+    if (!PHONE_REGEX.test(trimmedContactPhone)) {
+      const message = 'Please enter a valid contact phone number.';
+      setError(message);
+      showToast(message, 'error');
+      setLoading(false);
+      return;
+    }
+
+    if (form.land_allocation_status === 'ALLOCATED' && !form.selected_land_id) {
+      const message = 'Please select the allocated land.';
       setError(message);
       showToast(message, 'error');
       setLoading(false);
@@ -144,61 +454,71 @@ const CreateEvent = () => {
 
     const payload = {
       event_id: form.event_id,
-      location_code: form.location_code,
-      location: form.location,
+      pin_code: trimmedPinCode,
+      location_code: normalizedLocationCode,
+      location: trimmedLocation,
       role: form.role,
-      budget: form.budget ? parseFloat(form.budget) : 0,
+      budget: parsedBudget,
       tree_count: treeCount,
-      tree_species: form.tree_species,
+      tree_species: trimmedSpecies,
       date_time: form.date_time,
       land_id: form.land_allocation_status === 'ALLOCATED' ? form.selected_land_id || null : null,
       land_allocation_status: form.land_allocation_status,
       proposed_land:
         form.land_allocation_status === 'ALLOCATED'
           ? {
-              latitude: selectedLand?.latitude || Number(form.proposed_latitude || 0) || null,
-              longitude: selectedLand?.longitude || Number(form.proposed_longitude || 0) || null,
-              area_sqft: selectedLand?.area_sqft || Number(form.proposed_area_sqft || 0) || null,
+              latitude: selectedLand?.latitude ?? parseOptionalNumber(form.proposed_latitude),
+              longitude: selectedLand?.longitude ?? parseOptionalNumber(form.proposed_longitude),
+              area_sqft: selectedLand?.area_sqft ?? parseOptionalNumber(form.proposed_area_sqft),
               address: selectedLand?.address || form.location,
             }
           : {
-              latitude: form.proposed_latitude ? Number(form.proposed_latitude) : null,
-              longitude: form.proposed_longitude ? Number(form.proposed_longitude) : null,
-              area_sqft: form.proposed_area_sqft ? Number(form.proposed_area_sqft) : null,
+              latitude: parseOptionalNumber(form.proposed_latitude),
+              longitude: parseOptionalNumber(form.proposed_longitude),
+              area_sqft: parseOptionalNumber(form.proposed_area_sqft),
               address: form.location,
             },
       land_support_options: form.land_support_options,
       land_support_other: form.land_support_other,
       can_run_without_sponsorship: form.can_run_without_sponsorship,
-      expected_volunteers: Number(form.expected_volunteers || 0),
-      maintenance_plan: form.maintenance_plan,
-      community_engagement_strategy: form.community_engagement_strategy,
+      expected_volunteers: parsedExpectedVolunteers,
+      maintenance_plan: trimmedMaintenancePlan,
       media_coverage: form.media_coverage,
-      social_media_handles: form.social_media_handles
+      social_media_handles: Array.from(
+        new Set(
+          form.social_media_handles
         .split(',')
         .map((item) => item.trim())
-        .filter(Boolean),
+            .filter(Boolean)
+        )
+      ),
       contact_person: {
-        name: form.contact_name,
-        phone: form.contact_phone,
-        email: form.contact_email,
+        name: trimmedCreatorName,
+        organization: trimmedOrganizationName,
+        phone: trimmedContactPhone,
+        email: trimmedContactEmail,
       },
       approval_mode: form.approval_mode,
       initiation_type: form.initiation_type,
-      description: form.description,
-      climate_zone: form.climate_zone,
-      labor_goal: Number(form.expected_volunteers || 0),
-      funding_goal: form.budget ? Number(form.budget) : null,
+      description: trimmedDescription,
+      climate_zone: trimmedClimateZone,
+      labor_goal: parsedExpectedVolunteers,
+      funding_goal: parsedBudget,
       procurement_status: 'PLANNED',
     };
 
     try {
-      await api.post('/events', payload);
-      showToast(`Event ${form.event_id} created successfully.`, 'success');
+      if (isEditMode) {
+        await api.put(`/events/${id}`, payload);
+        showToast(`Event ${form.event_id} updated successfully.`, 'success');
+      } else {
+        await api.post('/events', payload);
+        showToast(`Event ${form.event_id} created successfully.`, 'success');
+      }
       navigate('/my-events');
     } catch (err) {
       console.error('CreateEvent handleSubmit failed:', err);
-      const message = err.response?.data?.message || 'Failed to create event.';
+      const message = err.response?.data?.message || (isEditMode ? 'Failed to update event.' : 'Failed to create event.');
       setError(message);
       showToast(message, 'error');
     } finally {
@@ -277,11 +597,20 @@ const CreateEvent = () => {
             border: '1px solid #e8f3eb',
           }}
         >
-          <h2 style={{ margin: 0, color: '#163126', fontSize: isMobile ? '24px' : '32px' }}>Tree Plantation Event Creation Form</h2>
+          <h2 style={{ margin: 0, color: '#163126', fontSize: isMobile ? '24px' : '32px' }}>
+            {isEditMode ? 'Edit Tree Plantation Event' : 'Tree Plantation Event Creation Form'}
+          </h2>
           <p style={{ margin: '8px 0 24px', color: '#52796f', lineHeight: 1.6 }}>
             Fill the complete event setup and submit when your plantation plan is ready.
           </p>
 
+          {eventLoading ? (
+            <div style={{ padding: '40px 10px', textAlign: 'center', color: '#52796f' }}>
+              <i className="fas fa-spinner fa-spin" style={{ marginRight: '10px' }}></i>
+              Loading event details...
+            </div>
+          ) : (
+            <>
           {error && (
             <div style={{ marginBottom: '16px', background: '#fff1f2', color: '#be123c', padding: '14px 16px', borderRadius: '16px' }}>
               {error}
@@ -289,14 +618,41 @@ const CreateEvent = () => {
           )}
 
           <form onSubmit={handleSubmit}>
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr', gap: '14px', marginBottom: '14px' }}>
               <div>
-                <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Event ID</label>
-                <input value={form.event_id} readOnly style={fieldStyle} />
+                <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>PIN Code</label>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr auto', gap: '12px', alignItems: 'end' }}>
+                  <input
+                    value={form.pin_code}
+                    onChange={(e) => updateField('pin_code', e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="6-digit PIN code"
+                    style={fieldStyle}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={getLocation}
+                    disabled={locationLoading}
+                    style={{
+                      ...fieldStyle,
+                      width: isMobile ? '100%' : '220px',
+                      background: '#163126',
+                      color: 'white',
+                      border: 'none',
+                      cursor: locationLoading ? 'not-allowed' : 'pointer',
+                      opacity: locationLoading ? 0.7 : 1,
+                    }}
+                  >
+                    {locationLoading ? 'Detecting...' : 'Use Current Location'}
+                  </button>
+                </div>
               </div>
+            </div>
+
+            <div style={{ marginBottom: '14px' }}>
               <div>
                 <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Location Code</label>
-                <input value={form.location_code} onChange={(e) => updateField('location_code', e.target.value)} style={fieldStyle} />
+                <input value={form.location_code} readOnly style={fieldStyle} required />
               </div>
             </div>
 
@@ -332,7 +688,7 @@ const CreateEvent = () => {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
               <div>
                 <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Sponsorship Budget (Approx.)</label>
-                <input type="number" value={form.budget} onChange={(e) => updateField('budget', e.target.value)} placeholder="₹ amount" style={fieldStyle} />
+                <input type="number" value={form.budget} onChange={(e) => updateField('budget', e.target.value)} placeholder="₹ amount" style={fieldStyle} required />
               </div>
               <div>
                 <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Number of Trees</label>
@@ -365,7 +721,7 @@ const CreateEvent = () => {
               <>
                 <div style={{ marginBottom: '14px' }}>
                   <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Allocated Land</label>
-                  <select value={form.selected_land_id} onChange={(e) => updateField('selected_land_id', e.target.value)} style={fieldStyle}>
+                  <select value={form.selected_land_id} onChange={(e) => updateField('selected_land_id', e.target.value)} style={fieldStyle} required>
                     <option value="">Select from your land bank</option>
                     {lands.map((land) => (
                       <option key={land._id || land.id} value={land._id || land.id}>
@@ -420,15 +776,15 @@ const CreateEvent = () => {
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: '14px', marginBottom: '14px' }}>
               <div>
                 <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Event Date & Time</label>
-                <input type="datetime-local" value={form.date_time} onChange={(e) => updateField('date_time', e.target.value)} style={fieldStyle} />
+                <input type="datetime-local" value={form.date_time} onChange={(e) => updateField('date_time', e.target.value)} style={fieldStyle} required />
               </div>
               <div>
                 <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Expected Volunteers</label>
-                <input type="number" value={form.expected_volunteers} onChange={(e) => updateField('expected_volunteers', e.target.value)} style={fieldStyle} />
+                <input type="number" value={form.expected_volunteers} onChange={(e) => updateField('expected_volunteers', e.target.value)} style={fieldStyle} required />
               </div>
               <div>
                 <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Climate / Area Hint</label>
-                <input value={form.climate_zone} onChange={(e) => updateField('climate_zone', e.target.value)} placeholder="Dry, humid, semi-arid..." style={fieldStyle} />
+                <input value={form.climate_zone} onChange={(e) => updateField('climate_zone', e.target.value)} placeholder="Dry, humid, semi-arid..." style={fieldStyle} required />
               </div>
             </div>
 
@@ -451,17 +807,12 @@ const CreateEvent = () => {
 
             <div style={{ marginBottom: '14px' }}>
               <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Tree Species</label>
-              <input value={form.tree_species} onChange={(e) => updateField('tree_species', e.target.value)} placeholder="Neem, Pongamia, Tamarind..." style={fieldStyle} />
+              <input value={form.tree_species} onChange={(e) => updateField('tree_species', e.target.value)} placeholder="Neem, Pongamia, Tamarind..." style={fieldStyle} required />
             </div>
 
             <div style={{ marginBottom: '14px' }}>
               <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Maintenance Plan</label>
-              <textarea value={form.maintenance_plan} onChange={(e) => updateField('maintenance_plan', e.target.value)} style={{ ...fieldStyle, minHeight: '90px', resize: 'vertical' }} />
-            </div>
-
-            <div style={{ marginBottom: '14px' }}>
-              <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Community Engagement Strategy</label>
-              <textarea value={form.community_engagement_strategy} onChange={(e) => updateField('community_engagement_strategy', e.target.value)} style={{ ...fieldStyle, minHeight: '90px', resize: 'vertical' }} />
+              <textarea value={form.maintenance_plan} onChange={(e) => updateField('maintenance_plan', e.target.value)} style={{ ...fieldStyle, minHeight: '90px', resize: 'vertical' }} required />
             </div>
 
             <div style={{ marginBottom: '14px' }}>
@@ -471,13 +822,20 @@ const CreateEvent = () => {
 
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: '14px', marginBottom: '14px' }}>
               <div>
-                <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Contact Name</label>
-                <input value={form.contact_name} onChange={(e) => updateField('contact_name', e.target.value)} style={fieldStyle} required />
+                <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Event Creator Name</label>
+                <input value={form.creator_name} onChange={(e) => updateField('creator_name', e.target.value)} style={fieldStyle} required />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Event Organization</label>
+                <input value={form.organization_name} onChange={(e) => updateField('organization_name', e.target.value)} style={fieldStyle} required />
               </div>
               <div>
                 <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Contact Phone</label>
                 <input value={form.contact_phone} onChange={(e) => updateField('contact_phone', e.target.value)} style={fieldStyle} required />
               </div>
+            </div>
+
+            <div style={{ marginBottom: '14px' }}>
               <div>
                 <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Contact Email</label>
                 <input type="email" value={form.contact_email} onChange={(e) => updateField('contact_email', e.target.value)} style={fieldStyle} required />
@@ -486,12 +844,12 @@ const CreateEvent = () => {
 
             <div style={{ marginBottom: '22px' }}>
               <label style={{ display: 'block', fontWeight: 700, marginBottom: '8px', color: '#163126' }}>Additional Information</label>
-              <textarea value={form.description} onChange={(e) => updateField('description', e.target.value)} style={{ ...fieldStyle, minHeight: '110px', resize: 'vertical' }} />
+              <textarea value={form.description} onChange={(e) => updateField('description', e.target.value)} style={{ ...fieldStyle, minHeight: '110px', resize: 'vertical' }} required />
             </div>
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || eventLoading}
               style={{
                 width: '100%',
                 border: 'none',
@@ -505,9 +863,11 @@ const CreateEvent = () => {
                 opacity: loading ? 0.7 : 1,
               }}
             >
-              {loading ? 'Creating Event...' : 'Create Event'}
+              {loading ? (isEditMode ? 'Saving Event...' : 'Creating Event...') : (isEditMode ? 'Save Event Changes' : 'Create Event')}
             </button>
           </form>
+            </>
+          )}
         </section>
       </div>
     </div>

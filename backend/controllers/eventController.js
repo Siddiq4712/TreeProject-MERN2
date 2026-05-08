@@ -5,6 +5,7 @@ export const create = async (req, res) => {
   const {
     event_id,
     location,
+    pin_code,
     location_code,
     description,
     date_time,
@@ -39,6 +40,7 @@ export const create = async (req, res) => {
       {
         event_id,
         location,
+        pin_code,
         location_code,
         description,
         date_time,
@@ -76,7 +78,7 @@ export const create = async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Server error', error: err.message });
+    res.status(err.status || 500).json({ message: err.message || 'Server error', error: err.message });
   }
 };
 

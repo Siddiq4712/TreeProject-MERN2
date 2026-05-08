@@ -5,6 +5,7 @@ import api from '../services/api';
 import { useResponsive } from '../hooks/useResponsive';
 import PaginationControls from '../components/PaginationControls';
 import { DEFAULT_PAGE_SIZE, getPaginationParams, normalizePaginatedResponse } from '../services/pagination';
+import { confirmAction, showError, showSuccess } from '../services/dialogs';
 
 const MyLand = () => {
   const [lands, setLands] = useState([]);
@@ -38,6 +39,30 @@ const MyLand = () => {
   const handlePageChange = (nextPage) => {
     if (nextPage < 1 || nextPage === page) return;
     setPage(nextPage);
+  };
+
+  const handleDeleteLand = async (landId) => {
+    const result = await confirmAction('Delete this land?', 'This action cannot be undone.', 'Delete land');
+    if (!result.isConfirmed) {
+      return;
+    }
+
+    try {
+      await api.delete(`/lands/${landId}`);
+      setLands((current) => current.filter((land) => getId(land) !== landId));
+      setPagination((current) =>
+        current
+          ? {
+              ...current,
+              total: Math.max(0, current.total - 1),
+            }
+          : current
+      );
+      await showSuccess('Land deleted');
+      fetchLands();
+    } catch (err) {
+      showError('Delete failed', err.response?.data?.message || 'Land could not be deleted.');
+    }
   };
 
   const totalLands = pagination?.total || 0;
@@ -238,23 +263,54 @@ const MyLand = () => {
                       {land.water_availability ? `Water source: ${land.water_source || 'Available'}` : 'Water source not configured'}
                     </div>
 
-                    <button
-                      onClick={() => navigate(`/land/${getId(land)}`)}
-                      style={{
-                        marginTop: '18px',
-                        width: '100%',
-                        border: 'none',
-                        background: 'linear-gradient(135deg, #2d6a4f, #1b4332)',
-                        color: 'white',
-                        borderRadius: '18px',
-                        padding: '14px',
-                        fontWeight: 800,
-                        cursor: 'pointer',
-                        boxShadow: '0 14px 30px rgba(15, 47, 36, 0.14)',
-                      }}
-                    >
-                      Open Land Detail
-                    </button>
+                    <div style={{ display: 'grid', gap: '10px', marginTop: '18px' }}>
+                      <button
+                        onClick={() => navigate(`/land/${getId(land)}`)}
+                        style={{
+                          width: '100%',
+                          border: 'none',
+                          background: 'linear-gradient(135deg, #2d6a4f, #1b4332)',
+                          color: 'white',
+                          borderRadius: '18px',
+                          padding: '14px',
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                          boxShadow: '0 14px 30px rgba(15, 47, 36, 0.14)',
+                        }}
+                      >
+                        Open Land Detail
+                      </button>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                        <button
+                          onClick={() => navigate(`/edit-land/${getId(land)}`)}
+                          style={{
+                            border: '1px solid #d3e6d9',
+                            background: '#f8fffb',
+                            color: '#163126',
+                            borderRadius: '18px',
+                            padding: '14px',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteLand(getId(land))}
+                          style={{
+                            border: '1px solid #fecaca',
+                            background: '#fff1f2',
+                            color: '#be123c',
+                            borderRadius: '18px',
+                            padding: '14px',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </article>
               );

@@ -352,6 +352,22 @@ const MyTrees = () => {
                       Open Tree Detail
                     </button>
                     <button
+                      onClick={() => navigate(`/edit-tree/${getId(tree)}`)}
+                      style={{
+                        marginTop: '10px',
+                        width: '100%',
+                        border: '1px solid #d3e6d9',
+                        background: '#f8fffb',
+                        color: '#163126',
+                        borderRadius: '18px',
+                        padding: '14px',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Edit Tree
+                    </button>
+                    <button
                       onClick={() => handleDeleteTree(getId(tree))}
                       style={{
                         marginTop: '10px',
